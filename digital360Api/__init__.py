@@ -1,0 +1,1 @@
+default_app_config = 'digital360Api.apps.Digital360ApiConfig'
