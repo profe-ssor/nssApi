@@ -12,6 +12,6 @@ urlpatterns = [
     path('admin-dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('supervisor-dashboard/', views.supervisor_dashboard, name='supervisor_dashboard'),
     path('user-dashboard/', views.user_dashboard, name='user_dashboard'),
-    path('logout/', views.logout, name='logout'),  
-
+    path('logout/', views.logout, name='logout'),
+    path('regions/', views.regions, name='regions'),
 ]
