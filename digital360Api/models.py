@@ -20,11 +20,13 @@ class Region(models.Model):
         ('North East', 'North East'),
         ('Western Region', 'Western Region'),
     ]
-    name = models.CharField(max_length=255, choices=GHANA_REGIONS)
+    name = models.CharField(max_length=255, choices=GHANA_REGIONS, unique=True)
 
 
     def __str__(self):
         return self.name
+    class Meta:
+        ordering = ['name']
 
 class MyUser(AbstractUser):
     username = models.CharField(max_length=255)
@@ -59,5 +61,5 @@ class MyUser(AbstractUser):
     REQUIRED_FIELDS = [
         'username', 'nss_id', 'ghana_card', 'gender', 'date_of_birth',
         'assigned_institution', 'start_date', 'end_date', 'phone',
-        'region_of_posting', 'resident_address'  # Added region_of_posting back to REQUIRED_FIELDS
+        'region_of_posting_id', 'resident_address'  
     ]

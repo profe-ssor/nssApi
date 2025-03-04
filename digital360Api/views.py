@@ -11,7 +11,6 @@ from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from django.contrib import messages
 from django.contrib.auth.models import User
-from django.contrib.auth.decorators import login_required, user_passes_test 
 
 # Test the api see if it works properly by displaying Setup was successful
 @api_view(['GET'])
@@ -198,3 +197,21 @@ def admins(request):
     admins = MyUser.objects.filter(is_superuser=True)
     serializer = UserSerializer(admins, many=True)
     return Response(serializer.data)
+
+
+
+# Count toatl users, admin and supervisors
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_counts(request):
+    total_users = MyUser.objects.count()
+    total_admins = MyUser.objects.filter(is_superuser=True).count()
+    total_supervisors = MyUser.objects.filter(is_staff=True, is_superuser=False).count()
+    total_normal_users = MyUser.objects.filter(is_superuser=False, is_staff=False).count()
+
+    return Response({
+        'total_users': total_users,
+        'total_admins': total_admins,
+        'total_supervisors': total_supervisors,
+        'total_normal_users': total_normal_users
+    }, status=status.HTTP_200_OK)

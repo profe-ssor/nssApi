@@ -14,4 +14,6 @@ urlpatterns = [
     path('user-dashboard/', views.user_dashboard, name='user_dashboard'),
     path('logout/', views.logout, name='logout'),
     path('regions/', views.regions, name='regions'),
+    path('nssmembers/', views.nssmembers, name='nssmembers'),
+    path('userCounts/', views.user_counts, name='userCount'),
 ]
