@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from digital360Api.models import MyUser, OTPVerification, Region, UploadPDF
+from .models import MyUser, OTPVerification, Region, UploadPDF
 from digital360Api.serializers import OTPVerifySerializer, RegionSerializer, UserSerializer, UploadPDFSerializer
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
