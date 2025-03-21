@@ -384,7 +384,7 @@ def upload_pdf(request):
 
 
 @api_view(['GET'])
-
+@permission_classes([IsAuthenticated])
 def list_pdfs(request):
     """List all PDFs uploaded by the user"""
     pdfs = UploadPDF.objects.filter()
@@ -392,7 +392,7 @@ def list_pdfs(request):
     return Response(serializer.data)
 
 @api_view(['GET'])
-
+@permission_classes([IsAuthenticated])
 def get_pdf(request, pk):
     """Get details of a specific PDF"""
     try:
