@@ -8,8 +8,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import MyUser, OTPVerification, Region, UploadPDF
-from digital360Api.serializers import OTPVerifySerializer, RegionSerializer, UserSerializer, UploadPDFSerializer
+from .models import Administrator, MyUser, NSSPersonnel, OTPVerification, Region, Supervisor, UniversityRecord, UploadPDF, GhanaCardRecord
+from digital360Api.serializers import AdministratorSerializer, GhanaCardRecordSerializer, NSSPersonnelSerializer, OTPVerifySerializer, RegionSerializer, SupervisorSerializer, UniversityRecordSerializer, UserSerializer, UploadPDFSerializer
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.mail import send_mail
@@ -43,6 +43,7 @@ def register(request):
 
             return Response({
                 'message': 'Account created successfully! Check your email for OTP verification.',
+                 "id": user.id, 
                 'user': serializer.data,
             }, status=status.HTTP_201_CREATED)
 
@@ -146,6 +147,164 @@ def resend_otp(request):
     except get_user_model().DoesNotExist:
         return Response({'error': "This email doesn't exist in the database"}, status=status.HTTP_404_NOT_FOUND)
     
+# Enpoint for savin NssPersonel Database
+
+@api_view(['POST'])
+def NssPersonelDatabase(request):
+    data = request.data
+    user_id = data.get('user_id') 
+
+    try:
+        user = MyUser.objects.get(id=user_id) 
+    except MyUser.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    data['user'] = user.id  # Assign user to the form data
+
+    serializer = NSSPersonnelSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({'message': 'Data saved successfully'}, status=status.HTTP_201_CREATED)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Endpoint to get all NssPersonel
+@api_view(['GET'])
+def get_all_NssPersonelDataBase(request):
+    nss_personel = NSSPersonnel.objects.all()
+    serializer = NSSPersonnelSerializer(nss_personel, many=True)
+    return Response(serializer.data)
+
+# Endpoint to count all NssPersonel
+@api_view(['GET'])
+def count_NssPersonelDataBase(request):
+    count = NSSPersonnel.objects.all().count()
+    return Response({"count": count})
+
+
+
+# Endpoints for Supervisors Database
+@api_view(['POST'])
+def SupervisorsDatabase(request):
+    data = request.data
+    user_id = data.get('user_id')
+    try:
+        user = MyUser.objects.get(id=user_id) 
+    except MyUser.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    data['user'] = user.id 
+    serializer = SupervisorSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(
+            {
+                "message": 'Data saved successfully'
+            }, status=status.HTTP_201_CREATED
+        )
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Endpoint to get all Supervisors
+@api_view(['GET'])
+def get_all_SupervisorsDataBase(request):
+    supervisors = Supervisor.objects.all()
+    serializer = SupervisorSerializer(supervisors, many=True)
+    return Response(serializer.data)
+
+# Endpoint to count all Supervisors
+@api_view(['GET'])
+def count_SupervisorsDataBase(request):
+    count = Supervisor.objects.all().count()
+    return Response({"count": count})
+
+
+# Endpoints for Administrator Database
+@api_view(['POST'])
+def AdministratorsDatabase(request):
+    data = request.data
+    user_id = data.get('user_id')
+    try:
+        user = MyUser.objects.get(id=user_id) 
+    except MyUser.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    data['user'] = user.id 
+    serializer =  AdministratorSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(
+            {
+                "message": 'Data saved successfully'
+            }, status=status.HTTP_201_CREATED
+        )
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+# Endpoint to get all Administrators
+@api_view(['GET'])
+def get_all_AdministratorsDataBase(request):
+    administrators = Administrator.objects.all()
+    serializer = AdministratorSerializer(administrators, many=True)
+    return Response(serializer.data)
+
+# Endpoint to count all Administrators
+@api_view(['GET'])
+def count_AdministratorsDataBase(request):
+    count = Administrator.objects.all().count()
+    return Response({"count": count})
+
+# GhanaCardRecord
+@api_view(['POST'])
+def ghanaCardRecords(request):
+    data = request.data
+    serializer = GhanaCardRecordSerializer(data = data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(
+            {'message': 'Data saved successfully'}, status = status.HTTP_201_CREATED
+        )
+    else:
+        return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
+    
+# Get all GhanaCardRecords
+@api_view(['GET'])
+def get_all_GhanaCardRecords(request):
+    ghanacards = GhanaCardRecord.objects.all() 
+    serializer = GhanaCardRecordSerializer(ghanacards, many=True)
+    return Response(serializer.data)
+
+# Count all GhanaCardRecords 
+@api_view(['GET'])
+def count_ghanaCardRecords(request):
+    return Response({'count': GhanaCardRecord.objects.all().count()})
+
+# UniversityDatabase
+@api_view(['POST'])
+def universityDatabase(request):
+    data = request.data
+    serializer = UniversityRecordSerializer(data = data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(
+            {'message': 'Data saved successfully'}, status = status.HTTP_201_CREATED
+        )
+    else:
+        return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
+
+# Get all GhanaCardRecords
+@api_view(['GET'])
+def get_all_universityDatabase(request):
+    university = UniversityRecord.objects.all() 
+    serializer = GhanaCardRecordSerializer(university, many=True)
+    return Response(serializer.data)
+
+# Count all GhanaCardRecords
+@api_view(['GET'])
+def count_universityDatabase(request):
+    return Response({'count': UniversityRecord.objects.all().count()})
+
 
 # Login using email and password endpoints
 @api_view(['POST'])

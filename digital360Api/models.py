@@ -1,9 +1,67 @@
+from django.utils import timezone
 import secrets
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
+# ===============================
+# Custom User Model (MyUser)
+# ===============================
+class MyUser(AbstractUser):
+    USER_TYPE_CHOICES = [
+        ('nss', 'NSS Personnel'),
+        ('supervisor', 'Supervisor'),
+        ('admin', 'Administrator'),
+    ]
 
+    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150)
+    gender = models.CharField(max_length=10, choices=[('M', 'Male'), ('F', 'Female')])
+    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    groups = models.ManyToManyField(
+        'auth.Group',
+        related_name='myuser_set',
+        blank=True,
+        )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        related_name='myuser_permissions_set',
+        blank=True,
+    )
+
+
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
+
+    def save(self, *args, **kwargs):
+        """ Automatically set is_superuser and is_staff based on user_type """
+        if self.user_type == 'admin':
+            self.is_superuser = True
+            self.is_staff = True
+        elif self.user_type == 'supervisor':
+            self.is_superuser = False
+            self.is_staff = True
+        else:  # 'nss'
+            self.is_superuser = False
+            self.is_staff = False
+        
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.username} ({self.user_type})"
+
+
+
+    def __str__(self):
+        return f"{self.username} ({self.user_type})"
+
+
+# ===============================
+# Region Model
+# ===============================
 class Region(models.Model):
     GHANA_REGIONS = [
         ('Greater Accra', 'Greater Accra'),
@@ -27,43 +85,100 @@ class Region(models.Model):
     def __str__(self):
         return self.name
 
-
-class MyUser(AbstractUser):
-    username = models.CharField(max_length=255)
-    email = models.EmailField(unique=True)
-    nss_id = models.CharField(max_length=50, unique=True)
-    ghana_card = models.CharField(max_length=50, unique=True)
+# ===============================
+# Ghana Card Record Model
+# ===============================
+class GhanaCardRecord(models.Model):
+    ghana_card_number = models.CharField(max_length=20, unique=True)
+    full_name = models.CharField(max_length=255)
     gender = models.CharField(max_length=10, choices=[('M', 'Male'), ('F', 'Female')])
-    date_of_birth = models.CharField(max_length=10)
-    assigned_institution = models.CharField(max_length=255)
+    date_of_birth = models.DateField()
+    nationality = models.CharField(max_length=100, default="Ghanaian")
+    contact_number = models.CharField(max_length=20)
+    email = models.EmailField(unique=True)
+    address = models.TextField()
+
+    def __str__(self):
+        return f"{self.full_name} ({self.ghana_card_number})"
+    
+# ===============================
+# University Record Model
+# ===============================
+class UniversityRecord(models.Model):
+    full_name = models.CharField(max_length=255)
+    student_id = models.CharField(max_length=20, unique=True, default="DEFAULT_ID")
+    gender = models.CharField(max_length=10, choices=[('M', 'Male'), ('F', 'Female')])
+    ghana_card_number = models.ForeignKey(GhanaCardRecord, on_delete=models.CASCADE)
+    date_of_birth = models.DateField()
+    university_name = models.CharField(max_length=255)
+    course = models.CharField(max_length=255)
+    enrollment_year = models.CharField(max_length=255)
+    graduation_year = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.full_name} - {self.university_name} ({self.enrollment_year}-{self.graduation_year})"
+
+
+# ===============================
+# Workplace Model
+# ===============================
+class Workplace(models.Model):
+    workplace_name = models.CharField(max_length=255)
+    location_address = models.TextField()
+    geolocation_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    geolocation_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+
+    def __str__(self):
+        return self.workplace_name
+
+
+
+# ===============================
+# Supervisor Model
+# ===============================
+class Supervisor(models.Model):
+    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="supervisor_profile")
+    full_name = models.CharField(max_length=255)
+    ghana_card_record = models.OneToOneField(GhanaCardRecord, on_delete=models.CASCADE)
+    contact = models.CharField(max_length=20)
+    assigned_region = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True)
+    assigned_workplace = models.ForeignKey(Workplace, on_delete=models.SET_NULL, null=True, related_name='supervisors')  # ✅ Changed to ForeignKey  # Changed to ManyToManyField
+    def __str__(self):
+        return f"Supervisor: {self.full_name}"
+# ===============================
+# Administrator Model
+# ===============================
+class Administrator(models.Model):
+    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="administrator_profile")
+    admin_name = models.CharField(max_length=255)
+    ghana_card_record = models.OneToOneField(GhanaCardRecord, on_delete=models.CASCADE)
+    contact = models.CharField(max_length=20)
+    assigned_supervisors = models.ManyToManyField(Supervisor, related_name='managed_by_admin')
+
+    def __str__(self):
+        return f"Administrator: {self.admin_name }"
+    
+# ===============================
+# NSS Personnel Model
+# ===============================
+class NSSPersonnel(models.Model):
+    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="nss_profile")
+    full_name = models.CharField(max_length=255)
+    ghana_card_record = models.CharField(max_length=20) 
+    nss_id = models.CharField(max_length=25, default='nss_id')
     start_date = models.CharField(max_length=10)
     end_date = models.CharField(max_length=10)
     phone = models.CharField(max_length=10)
+    assigned_institution = models.CharField(max_length=255)
     region_of_posting = models.ForeignKey(
         Region,
         on_delete=models.CASCADE,
         related_name='posted_users'
     )
-    resident_address = models.CharField(max_length=255)
 
-    groups = models.ManyToManyField(
-        'auth.Group',
-        related_name='myuser_set',
-        blank=True,
-    )
-    user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        related_name='myuser_permissions_set',
-        blank=True,
-    )
-
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = [
-        'username', 'nss_id', 'ghana_card', 'gender', 'date_of_birth',
-        'assigned_institution', 'start_date', 'end_date', 'phone',
-        'region_of_posting', 'resident_address'
-    ]
-
+    def __str__(self):
+        return f"NSS Personnel: {self.full_name}"
+    
 class OTPVerification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='otps')
     otp_code = models.CharField(max_length=6, default=secrets.token_hex(3))
