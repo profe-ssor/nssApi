@@ -132,52 +132,6 @@ class Workplace(models.Model):
         return self.workplace_name
 
 
-
-# ===============================
-# Supervisor Model
-# ===============================
-class Supervisor(models.Model):
-    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="supervisor_profile")
-    full_name = models.CharField(max_length=255)
-    ghana_card_record = models.OneToOneField(GhanaCardRecord, on_delete=models.CASCADE)
-    contact = models.CharField(max_length=20)
-    assigned_region = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True)
-    assigned_workplace = models.ForeignKey(Workplace, on_delete=models.SET_NULL, null=True, related_name='supervisors')  # ✅ Changed to ForeignKey  # Changed to ManyToManyField
-    def __str__(self):
-        return f"Supervisor: {self.full_name}"
-# ===============================
-# Administrator Model
-# ===============================
-class Administrator(models.Model):
-    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="administrator_profile")
-    admin_name = models.CharField(max_length=255)
-    ghana_card_record = models.OneToOneField(GhanaCardRecord, on_delete=models.CASCADE)
-    contact = models.CharField(max_length=20)
-    assigned_supervisors = models.ManyToManyField(Supervisor, related_name='managed_by_admin')
-
-    def __str__(self):
-        return f"Administrator: {self.admin_name }"
-    
-# ===============================
-# NSS Personnel Model
-# ===============================
-class NSSPersonnel(models.Model):
-    user = models.OneToOneField(MyUser, on_delete=models.CASCADE, related_name="nss_profile")
-    full_name = models.CharField(max_length=255)
-    ghana_card_record = models.CharField(max_length=20) 
-    nss_id = models.CharField(max_length=25, default='nss_id')
-    start_date = models.CharField(max_length=10)
-    end_date = models.CharField(max_length=10)
-    phone = models.CharField(max_length=10)
-    assigned_institution = models.CharField(max_length=255)
-    region_of_posting = models.ForeignKey(
-        Region,
-        on_delete=models.CASCADE,
-        related_name='posted_users'
-    )
-
-    def __str__(self):
-        return f"NSS Personnel: {self.full_name}"
     
 class OTPVerification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='otps')
@@ -189,17 +143,3 @@ class OTPVerification(models.Model):
     def __str__(self):
         return self.user.username
     
-
-# models.py
-class UploadPDF(models.Model):
-    user = models.ForeignKey(MyUser, on_delete=models.CASCADE, null=True)
-    file_name = models.CharField(max_length=255, default="Untitled")
-    file = models.FileField(upload_to='documents/')
-    signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True)
-    signature_drawing = models.TextField(null=True, blank=True)  # Stores base64 drawing data
-    is_signed = models.BooleanField(default=False)
-    signed_file = models.FileField(upload_to='signed_docs/', null=True, blank=True)
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.file_name} - {self.uploaded_at}"

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Administrator, GhanaCardRecord, MyUser, NSSPersonnel, OTPVerification, Region, Supervisor, UniversityRecord, UploadPDF, Workplace
+from .models import  GhanaCardRecord, MyUser,  OTPVerification, Region,  UniversityRecord,Workplace
 
 
 
@@ -27,36 +27,6 @@ class UniversityRecordSerializer(serializers.ModelSerializer):
         model = UniversityRecord
         fields = '__all__'
 
-class SupervisorSerializer(serializers.ModelSerializer):
-    ghana_card_record = serializers.PrimaryKeyRelatedField(queryset=GhanaCardRecord.objects.all()) # Nested serialization
-    assigned_workplace = serializers.PrimaryKeyRelatedField(queryset=Workplace.objects.all())
-
-    class Meta:
-        model = Supervisor
-        fields = '__all__'
-
-
-class AdministratorSerializer(serializers.ModelSerializer):
-    ghana_card_record = serializers.PrimaryKeyRelatedField(queryset=GhanaCardRecord.objects.all())
-    assigned_supervisors = serializers.PrimaryKeyRelatedField(queryset=Supervisor.objects.all(),  many=True )
-
-    class Meta:
-        model = Administrator
-        fields = '__all__'
-
-class NSSPersonnelSerializer(serializers.ModelSerializer):
-    region_of_posting = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all())
-
-    class Meta:
-        model = NSSPersonnel
-        fields = '__all__'
-
-    # def validate_ghana_card_record(self, value):
-    #     """Ensure Ghana Card exists in the database before allowing submission."""
-    #     if not GhanaCardRecord.objects.filter(ghana_card_number=value).exists():
-    #         raise serializers.ValidationError("Invalid Ghana Card number! Please enter a valid one.")
-    #     return value
-
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -82,14 +52,3 @@ class OTPVerifySerializer(serializers.Serializer):
     otp_code = serializers.CharField(max_length=6)
 
 # serializers.py
-class UploadPDFSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UploadPDF
-        fields = [
-            'id', 'file_name', 'file', 'signature_image',
-            'signature_drawing', 'is_signed', 'signed_file', 'uploaded_at'
-        ]
-        read_only_fields = [
-            'id', 'is_signed', 'signed_file', 'uploaded_at',
-            'signature_drawing', 'signature_image'
-        ]

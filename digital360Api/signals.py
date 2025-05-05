@@ -6,10 +6,14 @@ from django.core.mail import send_mail
 from django.utils import timezone
 import random
 import logging
-from .models import MyUser, OTPVerification, UploadPDF
+from .models import MyUser, OTPVerification
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import Group
+import os
+import shutil
+from django.conf import settings
+
 
 
 
@@ -48,6 +52,7 @@ def update_user_role_and_create_otp(sender, instance, created, **kwargs):
                 print(f"SMTP Error details: {e}")
         except Exception as e:
             logger.error(f"Error in OTP creation process: {str(e)}")
+
 
 
 

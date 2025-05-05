@@ -1,3 +1,4 @@
+import json
 from tokenize import TokenError
 from django.conf import settings
 from django.utils import timezone
@@ -8,19 +9,20 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Administrator, MyUser, NSSPersonnel, OTPVerification, Region, Supervisor, UniversityRecord, UploadPDF, GhanaCardRecord
-from digital360Api.serializers import AdministratorSerializer, GhanaCardRecordSerializer, NSSPersonnelSerializer, OTPVerifySerializer, RegionSerializer, SupervisorSerializer, UniversityRecordSerializer, UserSerializer, UploadPDFSerializer
+
+from nss_admin.models import Administrator
+from nss_personnel.models import NSSPersonnel
+from nss_personnel.serializer import NSSPersonnelSerializer
+from nss_supervisors.models import Supervisor
+from nss_supervisors.serializers import SupervisorSerializer
+
+from .models import  MyUser, OTPVerification, Region,  UniversityRecord, GhanaCardRecord
+from digital360Api.serializers import  GhanaCardRecordSerializer, OTPVerifySerializer, RegionSerializer,  UniversityRecordSerializer, UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.mail import send_mail
 from django.contrib.auth import authenticate
-import fitz
-import base64
-import os
-from io import BytesIO
-from PIL import Image
-from django.core.files.base import ContentFile
-# Create your views here.
+
 
 @api_view(['GET'])
 def index(request):
@@ -147,113 +149,6 @@ def resend_otp(request):
     except get_user_model().DoesNotExist:
         return Response({'error': "This email doesn't exist in the database"}, status=status.HTTP_404_NOT_FOUND)
     
-# Enpoint for savin NssPersonel Database
-
-@api_view(['POST'])
-def NssPersonelDatabase(request):
-    data = request.data
-    user_id = data.get('user_id') 
-
-    try:
-        user = MyUser.objects.get(id=user_id) 
-    except MyUser.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    data['user'] = user.id  # Assign user to the form data
-
-    serializer = NSSPersonnelSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({'message': 'Data saved successfully'}, status=status.HTTP_201_CREATED)
-    else:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# Endpoint to get all NssPersonel
-@api_view(['GET'])
-def get_all_NssPersonelDataBase(request):
-    nss_personel = NSSPersonnel.objects.all()
-    serializer = NSSPersonnelSerializer(nss_personel, many=True)
-    return Response(serializer.data)
-
-# Endpoint to count all NssPersonel
-@api_view(['GET'])
-def count_NssPersonelDataBase(request):
-    count = NSSPersonnel.objects.all().count()
-    return Response({"count": count})
-
-
-
-# Endpoints for Supervisors Database
-@api_view(['POST'])
-def SupervisorsDatabase(request):
-    data = request.data
-    user_id = data.get('user_id')
-    try:
-        user = MyUser.objects.get(id=user_id) 
-    except MyUser.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    data['user'] = user.id 
-    serializer = SupervisorSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(
-            {
-                "message": 'Data saved successfully'
-            }, status=status.HTTP_201_CREATED
-        )
-    else:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# Endpoint to get all Supervisors
-@api_view(['GET'])
-def get_all_SupervisorsDataBase(request):
-    supervisors = Supervisor.objects.all()
-    serializer = SupervisorSerializer(supervisors, many=True)
-    return Response(serializer.data)
-
-# Endpoint to count all Supervisors
-@api_view(['GET'])
-def count_SupervisorsDataBase(request):
-    count = Supervisor.objects.all().count()
-    return Response({"count": count})
-
-
-# Endpoints for Administrator Database
-@api_view(['POST'])
-def AdministratorsDatabase(request):
-    data = request.data
-    user_id = data.get('user_id')
-    try:
-        user = MyUser.objects.get(id=user_id) 
-    except MyUser.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    data['user'] = user.id 
-    serializer =  AdministratorSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(
-            {
-                "message": 'Data saved successfully'
-            }, status=status.HTTP_201_CREATED
-        )
-    else:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-# Endpoint to get all Administrators
-@api_view(['GET'])
-def get_all_AdministratorsDataBase(request):
-    administrators = Administrator.objects.all()
-    serializer = AdministratorSerializer(administrators, many=True)
-    return Response(serializer.data)
-
-# Endpoint to count all Administrators
-@api_view(['GET'])
-def count_AdministratorsDataBase(request):
-    count = Administrator.objects.all().count()
-    return Response({"count": count})
 
 # GhanaCardRecord
 @api_view(['POST'])
@@ -263,7 +158,10 @@ def ghanaCardRecords(request):
     if serializer.is_valid():
         serializer.save()
         return Response(
-            {'message': 'Data saved successfully'}, status = status.HTTP_201_CREATED
+            {
+                'message': 'Data saved successfully',
+                'id': serializer.instance.id,  # Send back the new ID
+            }, status = status.HTTP_201_CREATED
         )
     else:
         return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
@@ -319,8 +217,33 @@ def login(request):
     if user:
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
+        full_name = 'Unknown'
+
+        try:
+            
+            nss_personnel = user.nss_profile  
+            full_name = nss_personnel.full_name if nss_personnel.full_name else full_name
+
+        
+        except NSSPersonnel.DoesNotExist:
+             pass
+        try:
+            if full_name == 'Unknown':
+                admin = user.administrator_profile  
+                full_name = admin.full_name if admin.full_name else full_name
+        except Administrator.DoesNotExist:
+            pass  # admin
+
+        try:
+            # Check for Supervisor profile if full_name is still 'Unknown'
+            if full_name == 'Unknown':
+                supervisor = user.supervisor_profile  
+                full_name = supervisor.full_name if supervisor.full_name else full_name
+        except Supervisor.DoesNotExist:
+            pass  # supervisor_profile doesn't exist, so fall back to default
+
         if user.is_superuser:
-            message = 'Admin Dashboard'
+            message = 'Admin Dashboard'   
             role = 'admin'
         elif user.is_staff:
             message = 'Supervisor Dashboard'
@@ -333,9 +256,10 @@ def login(request):
             'message': f'Login successful! Welcome to {message}',
             'refresh': str(refresh),
             'access': access_token,
-            'user': {  # Include user data here
+            'user': { 
                 'email': user.email,
-                'role': role,  # Add role to the response
+                'role': role,  
+                'full_name': full_name,
                 'permissions': {
                     'is_superuser': user.is_superuser,
                     'is_staff': user.is_staff,
@@ -369,7 +293,7 @@ def logout(request):
 def get_user_permissions(user):
     return {
         'is_superuser': user.is_superuser, 
-        'is_staff': user.is_staff, ''
+        'is_staff': user.is_staff, 
         'is_active': user.is_active
         }    
 
@@ -404,7 +328,7 @@ def regions(request):
 @permission_classes([IsAuthenticated])
 def nssmembers(request):
     normal_users = MyUser.objects.filter(is_superuser=False, is_staff=False)
-    serializer = UserSerializer(nssmembers, many=True)
+    serializer = UserSerializer(normal_users, many=True)
     return Response(serializer.data)
 
 # Endpoint to return all supervisors
@@ -441,178 +365,143 @@ def user_counts(request):
         'total_normal_users': total_normal_users
     }, status=status.HTTP_200_OK)
 
-# Endpoint to upload pdf
+
+# End point to assign supervisors and nss members by admin
 
 
-# Make sure the directory exists
-os.makedirs(os.path.join(settings.MEDIA_ROOT, 'signed_docs'), exist_ok=True)
 
-def apply_signature(pdf_instance, signature_bytes, position=None):
-    """
-    Apply signature to PDF and save the result
+# Helper function to check if user is admin
+def is_admin(user):
+    return user.is_authenticated and user.is_superuser
+
+# Get available supervisors for admin to assign
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_available_supervisors(request):
+    if not is_admin(request.user):
+        return Response({'error': 'Access denied. Admin privileges required.'}, 
+                       status=status.HTTP_403_FORBIDDEN)
     
-    Args:
-        pdf_instance: UploadPDF model instance
-        signature_bytes: Image bytes of the signature
-        position: Dict with x, y, width, height (optional)
-    
-    Returns:
-        tuple: (success, error_message)
-    """
     try:
-        # Create temporary signature file
-        temp_signature = BytesIO(signature_bytes)
-        
-        # Open PDF
-        pdf_path = pdf_instance.file.path
-        doc = fitz.open(pdf_path)
-        
-        if not doc.page_count:
-            return False, "PDF has no pages"
-        
-        # Use first page by default
-        page = doc[0]
-        
-        # Calculate signature position (default or custom)
-        if position:
-            signature_rect = fitz.Rect(
-                position.get('x', 100),
-                position.get('y', 100),
-                position.get('x', 100) + position.get('width', 200),
-                position.get('y', 100) + position.get('height', 100)
-            )
-        else:
-            # Default position - bottom right of the page
-            page_rect = page.rect
-            signature_rect = fitz.Rect(
-                page_rect.width - 300,
-                page_rect.height - 150,
-                page_rect.width - 100,
-                page_rect.height - 50
-            )
-        
-        # Insert signature
-        page.insert_image(signature_rect, stream=temp_signature)
-        
-        # Save signed PDF
-        signed_filename = f"signed_{os.path.basename(pdf_instance.file.name)}"
-        signed_path = os.path.join(settings.MEDIA_ROOT, 'signed_docs', signed_filename)
-        
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(signed_path), exist_ok=True)
-        
-        # Save the document
-        doc.save(signed_path)
-        doc.close()
-        
-        # Update model
-        pdf_instance.is_signed = True
-        with open(signed_path, 'rb') as f:
-            pdf_instance.signed_file.save(signed_filename, ContentFile(f.read()), save=False)
-        pdf_instance.save()
-        
-        return True, None
-    except Exception as e:
-        return False, str(e)
+        admin = Administrator.objects.get(user=request.user)
+        supervisors = admin.assigned_supervisors.all()
+        serializer = SupervisorSerializer(supervisors, many=True)
+        return Response(serializer.data)
+    except Administrator.DoesNotExist:
+        return Response({'error': 'Administrator profile not found'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+
+# Assign supervisor to NSS personnel
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def assign_supervisor(request, nss_id):
+    if not is_admin(request.user):
+        return Response({'error': 'Access denied. Admin privileges required.'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        nss_personnel = NSSPersonnel.objects.get(id=nss_id)
+    except NSSPersonnel.DoesNotExist:
+        return Response({'error': 'NSS personnel not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+    
+    # Get supervisor ID from request data
+    supervisor_id = request.data.get('supervisor_id')
+    if not supervisor_id:
+        return Response({'error': 'Supervisor ID is required'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        supervisor = Supervisor.objects.get(id=supervisor_id)
+    except Supervisor.DoesNotExist:
+        return Response({'error': 'Supervisor not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if the supervisor is assigned to this admin
+    try:
+        admin = Administrator.objects.get(user=request.user)
+        if supervisor not in admin.assigned_supervisors.all():
+            return Response({'error': 'You can only assign supervisors that are assigned to you'}, 
+                           status=status.HTTP_403_FORBIDDEN)
+    except Administrator.DoesNotExist:
+        return Response({'error': 'Administrator profile not found'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    # Assign supervisor to NSS personnel
+    nss_personnel.assigned_supervisor = supervisor
+    nss_personnel.save()
+    
+    return Response({'success': 'Supervisor assigned successfully'}, 
+                   status=status.HTTP_200_OK)
+
+# Get NSS personnel assigned to a supervisor# Get NSS personnel assigned to a supervisor
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_nss_by_supervisor(request, supervisor_id):
+    if not request.user.is_staff and not request.user.is_superuser:
+        return Response({'error': 'Access denied. Supervisor or admin privileges required.'}, 
+                        status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        supervisor = Supervisor.objects.get(id=supervisor_id)
+    except Supervisor.DoesNotExist:
+        return Response({'error': 'Supervisor not found'}, 
+                        status=status.HTTP_404_NOT_FOUND)
+    
+    # If user is a supervisor, they should only see their own NSS personnel
+    if request.user.is_staff and not request.user.is_superuser:
+        if not hasattr(request.user, 'supervisor_profile') or request.user.supervisor_profile != supervisor:
+            return Response({'error': 'You can only view NSS personnel assigned to you'}, 
+                            status=status.HTTP_403_FORBIDDEN)
+    
+    # 👉 FIX IS HERE
+    nss_personnel = NSSPersonnel.objects.filter(assigned_supervisor=supervisor)
+    serializer = NSSPersonnelSerializer(nss_personnel, many=True)
+    
+    return Response(serializer.data)
+
+# Get all unassigned NSS personnel (for admin)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_unassigned_nss(request):
+    if not is_admin(request.user):
+        return Response({'error': 'Access denied. Admin privileges required.'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+        # 👇 Fix here: use 'assigned_supervisor' not 'supervisor'
+    unassigned_nss = NSSPersonnel.objects.filter(assigned_supervisor=None)
+    serializer = NSSPersonnelSerializer(unassigned_nss, many=True)
+    
+    return Response(serializer.data)
+
+# assign supervisors to an admin
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def upload_pdf(request):
-    """Upload a new PDF document"""
-    pdf_file = request.FILES.get('pdf')
-    if not pdf_file:
-        return Response({"error": "PDF file is required."}, status=400)
+def assign_supervisors_to_admin(request):
+    if not is_admin(request.user):
+        return Response({'error': 'Access denied. Admin privileges required.'}, 
+                       status=status.HTTP_403_FORBIDDEN)
     
-    # Validate PDF file
-    if not pdf_file.name.lower().endswith('.pdf'):
-        return Response({"error": "File must be a PDF."}, status=400)
+    supervisor_ids = request.data.get('supervisor_ids', [])
+    if not supervisor_ids:
+        return Response({'error': 'Supervisor IDs are required'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
     
-    # Create new PDF upload
-    upload = UploadPDF.objects.create(
-        user=request.user,
-        file_name=request.data.get('file_name', os.path.splitext(pdf_file.name)[0]),
-        file=pdf_file
-    )
-    
-    serializer = UploadPDFSerializer(upload)
-    
-    return Response({
-        "message": "PDF uploaded successfully!",
-        "data": serializer.data
-    }, status=201)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def list_pdfs(request):
-    """List all PDFs uploaded by the user"""
-    pdfs = UploadPDF.objects.filter()
-    serializer = UploadPDFSerializer(pdfs, many=True)
-    return Response(serializer.data)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_pdf(request, pk):
-    """Get details of a specific PDF"""
     try:
-        pdf = UploadPDF.objects.get(pk=pk, user=request.user)
-    except UploadPDF.DoesNotExist:
-        return Response({"error": "PDF not found"}, status=404)
+        admin = Administrator.objects.get(user=request.user)
+    except Administrator.DoesNotExist:
+        return Response({'error': 'Administrator profile not found'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
     
-    serializer = UploadPDFSerializer(pdf)
-    return Response(serializer.data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def sign_with_drawing(request, pk):
-    """Sign a PDF with a drawing (base64 encoded data)"""
-    try:
-        pdf = UploadPDF.objects.get(pk=pk, user=request.user)
-    except UploadPDF.DoesNotExist:
-        return Response({"error": "PDF not found"}, status=404)
-
-    signature_data = request.data.get('signature')
-    if not signature_data:
-        return Response({"error": "Signature data is required"}, status=400)
-
-    # Get position data if provided
-    position = request.data.get('position')
-    if position and not isinstance(position, dict):
-        try:
-            position = eval(position)  # Convert string to dict if needed
-        except:
-            position = None
-
-    try:
-        # Extract base64 data
-        if ',' in signature_data:
-            signature_data = signature_data.split(',')[1]
-        
-        # Decode base64 data
-        decoded_data = base64.b64decode(signature_data)
-        
-        # Verify and convert to image
-        img = Image.open(BytesIO(decoded_data))
-        
-        # Convert to PNG bytes
-        png_bytes = BytesIO()
-        img.save(png_bytes, format='PNG')
-        png_bytes.seek(0)
-        
-        # Save drawing data
-        pdf.signature_drawing = signature_data
-        
-        # Apply signature
-        success, error = apply_signature(pdf, png_bytes.getvalue(), position)
-        if not success:
-            return Response({"error": error}, status=500)
-        
-        serializer = UploadPDFSerializer(pdf)
-        return Response({
-            "message": "PDF signed with drawing successfully!",
-            "data": serializer.data
-        }, status=200)
-        
-    except Exception as e:
-        return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
+    # Get supervisors from provided IDs
+    supervisors = Supervisor.objects.filter(id__in=supervisor_ids)
+    if len(supervisors) != len(supervisor_ids):
+        return Response({'error': 'One or more supervisor IDs are invalid'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    # Assign supervisors to admin
+    admin.assigned_supervisors.add(*supervisors)
+    
+    return Response({'success': 'Supervisors assigned successfully to admin'}, 
+                   status=status.HTTP_200_OK)

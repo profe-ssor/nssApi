@@ -4,10 +4,18 @@ from django.urls import path, include, re_path
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
+from django.conf import settings
+from django.conf.urls.static import static
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('digital360Api.urls')),
+    path('nss_personnel/', include('nss_personnel.urls')),
+    path('nss_supervisor/', include('nss_supervisors.urls')),
+    path('nss_admin/', include('nss_admin.urls')),
+    path('file_uploads/', include('file_uploads.urls')),
+    path('messageApp/', include('messageApp.urls')),
     path('favicon.ico', lambda request: HttpResponse(status=204)),
 ]
 
@@ -23,3 +31,7 @@ urlpatterns += [
     # Catch-all pattern for API routes
     re_path(r'^api/.*$', not_found),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

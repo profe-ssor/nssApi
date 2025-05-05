@@ -1,0 +1,97 @@
+✅ Authentication & User Management:
+
+    /register/ — Register user (inactive until OTP verification)
+
+    /login/ — User login
+
+    /verify-otp/ — Verify OTP and activate account
+
+    /resend-otp/ — Resend OTP email
+
+    /logout/ — Logout (refresh token blacklist)
+
+✅ Dashboards (Role Based):
+
+    /admin-dashboard/ — For Superusers (Admins)
+
+    /supervisor-dashboard/ — For Staff (Supervisors)
+
+    /user-dashboard/ — For Normal Users
+
+✅ User Group Listings:
+
+    /nssmembers/ — List all Normal Users (NSS personnel)
+
+    /supervisors/ — List all Supervisors
+
+    /admins/ — List all Admins
+
+✅ Personnel Management:
+
+    /nssdb/ — Save NSS Personnel
+
+    /getAllnssdb/ — Get All NSS Personnel
+
+    /countnssdb/ — Count NSS Personnel
+
+✅ Supervisor Management:
+
+    /supervisorsdb/ — Save Supervisor
+
+    /getAllsupervisors/ — Get All Supervisors
+
+    /countsupervisors/ — Count Supervisors
+
+✅ Administrator Management:
+
+    /adminsdb/ — Save Admin
+
+    /getAlladmins/ — Get All Admins
+
+    /countadmins/ — Count Admins
+
+✅ University Management:
+
+    /universitydb/ — Save University Record
+
+    /getAlluniversity/ — Get All Universities
+
+    /countuniversity/ — Count Universities
+
+✅ Ghana Card Management:
+
+    /ghanacardsdb/ — Save Ghana Card Record
+
+    /getAllcards/ — Get All Ghana Cards
+
+    /countghanaCards/ — Count Ghana Cards
+
+✅ Region Fetching:
+
+    /regions/ — Get list of Regions
+
+✅ User Counts Overview:
+
+    /user-counts/ — Get counts for Users, Supervisors, Admins
+
+✅ Supervisor Assignments (NEW ones you mentioned):
+
+    /assign-supervisor/<nss_id>/ — POST: Assign a Supervisor to a specific NSS Personnel (Admin only)
+
+    /nss-by-supervisor/<supervisor_id>/ — GET: List all NSS Personnel assigned under a specific Supervisor (Admin or Supervisor)
+
+    /unassigned-nss/ — GET: List all NSS Personnel without any assigned Supervisor (Admin only)
+
+    /assign-supervisors-to-admin/ — POST: Assign multiple Supervisors under the currently logged-in Admin (Admin only)
+
+✅ Setup Testing:
+
+    / — Simple message (Setup was successful)
+
+
+    /send-message/	POST	Send a new message
+/inbox/	GET	View received messages
+/sent-messages/	GET	View sent messages
+/unread-messages/	GET	View unread messages
+/mark-message-read/<id>/	POST	Mark a message as read
+/delete-message/<id>/	DELETE	Delete a message you sent or received
