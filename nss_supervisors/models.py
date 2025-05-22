@@ -14,6 +14,9 @@ class Supervisor(models.Model):
     assigned_region = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True)
     assigned_workplace = models.ForeignKey(Workplace, on_delete=models.SET_NULL, null=True, related_name='supervisors')  # ✅ Changed to ForeignKey  # Changed to ManyToManyField
    
+
+    def get_full_name(self):
+         return self.full_name
   
     
     def __str__(self):

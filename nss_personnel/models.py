@@ -17,7 +17,9 @@ class NSSPersonnel(models.Model):
         on_delete=models.CASCADE,
         related_name='posted_users'
     )
-
+    def get_full_name(self):
+         return self.full_name
+    
     def __str__(self):
            return f"{self.full_name} ({self.nss_id})"
     

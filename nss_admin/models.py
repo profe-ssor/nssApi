@@ -12,6 +12,9 @@ class Administrator(models.Model):
     contact = models.CharField(max_length=20)
     assigned_supervisors = models.ManyToManyField(Supervisor, related_name='managed_by_admin')
 
+    def get_full_name(self):
+        return self.full_name
+
     def __str__(self):
         return f"Administrator: {self.full_name }"
     
