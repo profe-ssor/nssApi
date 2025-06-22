@@ -16,6 +16,7 @@ urlpatterns = [
     path('nss_admin/', include('nss_admin.urls')),
     path('file_uploads/', include('file_uploads.urls')),
     path('messageApp/', include('messageApp.urls')),
+    path('evaluations/', include('evaluations.urls')),
     path('favicon.ico', lambda request: HttpResponse(status=204)),
 ]
 

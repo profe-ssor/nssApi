@@ -10,15 +10,10 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
+from digital360Api.models import MyUser
 from file_uploads.models import UploadPDF
 from file_uploads.serializers import UploadPDFSerializer
 
-# Create your views here.
-# Endpoint to upload pdf
-
-
-# Make sure the directory exists
-# Make sure the directory exists
 os.makedirs(os.path.join(settings.MEDIA_ROOT, 'signed_docs'), exist_ok=True)
 
 def apply_signature(pdf_instance, signature_bytes, position=None):
@@ -215,3 +210,112 @@ def sign_with_image(request, pk):
         }, status=200)
     except Exception as e:
         return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
+    
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_evaluation_form(request):
+    """Upload PDF with evaluation form type, priority, and receiver"""
+    pdf_file = request.FILES.get('pdf')
+    if not pdf_file:
+        return Response({"error": "PDF file is required."}, status=400)
+    
+    if not pdf_file.name.lower().endswith('.pdf'):
+        return Response({"error": "File must be a PDF."}, status=400)
+
+    form_type = request.data.get('form_type', 'General')
+    priority = request.data.get('priority', 'medium')
+    receiver_id = request.data.get('receiver_id')
+    file_path = request.data.get('file_path')
+
+    if form_type not in dict(UploadPDF.FORM_TYPE_CHOICES):
+        return Response({"error": "Invalid form type."}, status=400)
+    
+    if priority not in dict(UploadPDF.PRIORITY_CHOICES):
+        return Response({"error": "Invalid priority value."}, status=400)
+
+    receiver = None
+    if receiver_id:
+        try:
+            receiver = MyUser.objects.get(pk=receiver_id)
+        except MyUser.DoesNotExist:
+            return Response({"error": "Receiver not found."}, status=404)
+    if file_path:
+        relative_path = file_path.replace('/media/', '')
+        full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+        if not os.path.exists(full_path):
+            return Response({"error": "File path not found."}, status=404)
+        with open(full_path, 'rb') as f:
+            file_content = ContentFile(f.read(), name=os.path.basename(full_path))
+
+        upload = UploadPDF.objects.create(
+            user=request.user,
+            file_name=request.data.get('file_name', os.path.basename(full_path)),
+            file=file_content,
+            form_type=form_type,
+            priority=priority,
+            receiver=receiver
+        )
+    else:
+        # fallback to uploaded file
+        pdf_file = request.FILES.get('pdf')
+        if not pdf_file:
+            return Response({"error": "PDF file or path is required."}, status=400)
+        if not pdf_file.name.lower().endswith('.pdf'):
+            return Response({"error": "File must be a PDF."}, status=400)
+        
+        upload = UploadPDF.objects.create(
+            user=request.user,
+            file_name=request.data.get('file_name', os.path.splitext(pdf_file.name)[0]),
+            file=pdf_file,
+            form_type=form_type,
+            priority=priority,
+            receiver=receiver
+        )
+    serializer = UploadPDFSerializer(upload)
+    
+    return Response({
+        "message": f"{form_type} form uploaded successfully with {priority} priority!",
+        "data": serializer.data
+    }, status=201)
+        
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_evaluation_forms(request):
+        """List only evaluation forms (signed and ready for submission)"""
+        user = request.user
+        evaluation_forms = UploadPDF.objects.filter(
+            user=user,
+            form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project'],
+            is_signed=True
+        )
+        
+        form_type = request.GET.get('form_type')
+        if form_type:
+            evaluation_forms = evaluation_forms.filter(form_type=form_type)
+        
+        serializer = UploadPDFSerializer(evaluation_forms, many=True)
+        return Response({
+            "message": "Evaluation forms retrieved successfully",
+            "count": evaluation_forms.count(),
+            "data": serializer.data
+        })
+        
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def received_evaluations(request):
+    """List evaluations sent to the logged-in supervisor/admin."""
+    user = request.user
+    evaluations = UploadPDF.objects.filter(
+        receiver=user,
+        form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project'],
+        is_signed=True
+    ).order_by('-uploaded_at')  # ✅ Corrected field
+
+    serializer = UploadPDFSerializer(evaluations, many=True)
+    return Response({
+        "message": "Received evaluation forms fetched.",
+        "count": evaluations.count(),
+        "data": serializer.data
+    }, status=200)

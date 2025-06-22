@@ -1,5 +1,5 @@
 from datetime import timedelta
-import dj_database_url
+
 from pathlib import Path
 import os
 import dj_database_url
@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'nss_admin',
     'file_uploads',
     'messageApp',
+    'evaluations',
 ]
 
 MIDDLEWARE = [
@@ -78,7 +79,7 @@ AUTH_USER_MODEL = 'digital360Api.MyUser'
 ROOT_URLCONF = 'nssApi.urls'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
-    "https://cohort3-alpha.vercel.app"  # Your frontend URL
+    "https://cohort3-alpha.vercel.app"  
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -132,7 +133,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-STATICSTORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
