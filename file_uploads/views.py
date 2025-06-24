@@ -5,7 +5,12 @@ from django.conf import settings
 from django.shortcuts import render
 from django.core.files.base import ContentFile
 import fitz
-from rest_framework.response import Response 
+from rest_framework.response import Response
+from datetime import timezone as dt_timezone
+
+from datetime import datetime
+from django.utils import timezone
+from calendar import monthrange
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -211,40 +216,55 @@ def sign_with_image(request, pk):
     except Exception as e:
         return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
     
-    
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_evaluation_form(request):
-    """Upload PDF with evaluation form type, priority, and receiver"""
+    """Upload PDF with evaluation form type, priority, receiver, and auto-set due date"""
     pdf_file = request.FILES.get('pdf')
-    if not pdf_file:
-        return Response({"error": "PDF file is required."}, status=400)
-    
-    if not pdf_file.name.lower().endswith('.pdf'):
-        return Response({"error": "File must be a PDF."}, status=400)
-
-    form_type = request.data.get('form_type', 'General')
+    form_type = request.data.get('form_type', 'Monthly')
     priority = request.data.get('priority', 'medium')
     receiver_id = request.data.get('receiver_id')
     file_path = request.data.get('file_path')
 
     if form_type not in dict(UploadPDF.FORM_TYPE_CHOICES):
         return Response({"error": "Invalid form type."}, status=400)
-    
+
     if priority not in dict(UploadPDF.PRIORITY_CHOICES):
         return Response({"error": "Invalid priority value."}, status=400)
 
+    # Fetch receiver user
     receiver = None
     if receiver_id:
         try:
             receiver = MyUser.objects.get(pk=receiver_id)
         except MyUser.DoesNotExist:
             return Response({"error": "Receiver not found."}, status=404)
+
+    # 🧠 Calculate due_date to be 21st of current or next month
+    now = timezone.now()
+    if now.day > 21:
+        if now.month == 12:
+            due_year = now.year + 1
+            due_month = 1
+        else:
+            due_year = now.year
+            due_month = now.month + 1
+    else:
+        due_year = now.year
+        due_month = now.month
+
+    due_date = datetime(due_year, due_month, 21, 23, 59, 59, tzinfo=dt_timezone.utc)
+
+
+    # ✅ Proceed with file processing
     if file_path:
         relative_path = file_path.replace('/media/', '')
         full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
         if not os.path.exists(full_path):
             return Response({"error": "File path not found."}, status=404)
+
         with open(full_path, 'rb') as f:
             file_content = ContentFile(f.read(), name=os.path.basename(full_path))
 
@@ -254,31 +274,37 @@ def send_evaluation_form(request):
             file=file_content,
             form_type=form_type,
             priority=priority,
-            receiver=receiver
+            receiver=receiver,
+            is_signed=True,
+            submitted_date=now,
+            due_date=due_date,
         )
     else:
-        # fallback to uploaded file
-        pdf_file = request.FILES.get('pdf')
-        if not pdf_file:
-            return Response({"error": "PDF file or path is required."}, status=400)
-        if not pdf_file.name.lower().endswith('.pdf'):
-            return Response({"error": "File must be a PDF."}, status=400)
-        
+        if not pdf_file or not pdf_file.name.lower().endswith('.pdf'):
+            return Response({"error": "PDF file or path is required and must be a PDF."}, status=400)
+
         upload = UploadPDF.objects.create(
             user=request.user,
             file_name=request.data.get('file_name', os.path.splitext(pdf_file.name)[0]),
             file=pdf_file,
             form_type=form_type,
             priority=priority,
-            receiver=receiver
+            receiver=receiver,
+            is_signed=True,
+            submitted_date=now,
+            due_date=due_date,
         )
+
+    # ✅ Copy the file to signed_file field
+    upload.signed_file.save(upload.file.name, upload.file.file, save=False)
+    upload.save()
+
     serializer = UploadPDFSerializer(upload)
-    
     return Response({
         "message": f"{form_type} form uploaded successfully with {priority} priority!",
         "data": serializer.data
     }, status=201)
-        
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -319,3 +345,23 @@ def received_evaluations(request):
         "count": evaluations.count(),
         "data": serializer.data
     }, status=200)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_evaluation_status(request, pk):
+    try:
+        pdf = UploadPDF.objects.get(pk=pk, receiver=request.user)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "Evaluation not found."}, status=404)
+
+    status_value = request.data.get('status')
+    if status_value not in dict(UploadPDF.STATUS_CHOICES):
+        return Response({"error": "Invalid status."}, status=400)
+
+    pdf.status = status_value
+    pdf.save()
+
+    return Response({
+        "message": f"Status updated to {status_value}.",
+        "data": UploadPDFSerializer(pdf).data
+    })

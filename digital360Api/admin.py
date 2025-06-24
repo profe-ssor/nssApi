@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from file_uploads.models import UploadPDF
+
 from nss_admin.models import Administrator
 from nss_personnel.models import NSSPersonnel
 from nss_supervisors.models import Supervisor
@@ -11,7 +11,7 @@ from .models import MyUser, Region, OTPVerification, GhanaCardRecord, University
 admin.site.register(MyUser)
 admin.site.register(Region)
 admin.site.register(OTPVerification)
-admin.site.register(UploadPDF)
+
 admin.site.register(UniversityRecord)
 admin.site.register(Workplace)
 admin.site.register(GhanaCardRecord) 

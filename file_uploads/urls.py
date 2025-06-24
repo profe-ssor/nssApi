@@ -10,10 +10,12 @@ urlpatterns = [
     path('signed/', views.list_signed_pdfs, name='list_signed_pdfs'),
     path('signed/all/', views.list_all_signed_pdfs, name='list_all_signed_pdfs'),
     path('signed/<int:pk>/', views.get_signed_pdf, name='get_signed_pdf'),
-    
-    # New evaluation form specific endpoints
-    path('evaluation-form/upload/', views.send_evaluation_form, name='upload_evaluation_form'),
+
+    # Evaluation form specific endpoints
+    path('evaluation-form/send/', views.send_evaluation_form, name='upload_evaluation_form'),
     path('evaluation-forms/', views.list_evaluation_forms, name='list_evaluation_forms'),
     path('evaluation-forms/received/', views.received_evaluations, name='received_evaluations'),
 
+    # ✅ Add this new endpoint for updating evaluation status
+    path('evaluation-forms/<int:pk>/update-status/', views.update_evaluation_status, name='update_evaluation_status'),
 ]
