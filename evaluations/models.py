@@ -74,6 +74,12 @@ class Evaluation(models.Model):
     
     @property
     def completed_today(self):
-        today = timezone.now().date()
-        return (self.status in ['approved', 'rejected'] and 
-                self.reviewed_at and self.reviewed_at.date() == today)
+        if not (self.status in ['approved', 'rejected'] and self.reviewed_at):
+            return False
+        
+        # Calculate 24-hour time bounds for "completed today"
+        now = timezone.now()
+        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_today = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        return start_of_today <= self.reviewed_at <= end_of_today

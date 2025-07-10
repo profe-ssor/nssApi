@@ -6,6 +6,7 @@ class EvaluationListSerializer(serializers.ModelSerializer):
     nss_personnel_name = serializers.CharField(source='nss_personnel.get_full_name', read_only=True)
     nss_personnel_email = serializers.CharField(source='nss_personnel.email', read_only=True)
     supervisor_name = serializers.CharField(source='supervisor.get_full_name', read_only=True)
+    administrator_name = serializers.CharField(source='supervisor.get_full_name', read_only=True)
     is_overdue = serializers.ReadOnlyField()
     completed_today = serializers.ReadOnlyField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -17,7 +18,7 @@ class EvaluationListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'evaluation_type', 'type_display',
             'priority', 'priority_display', 'status', 'status_display',
-            'nss_personnel_name', 'nss_personnel_email', 'supervisor_name',
+            'nss_personnel_name', 'nss_personnel_email', 'supervisor_name', 'administrator_name',
             'created_at', 'updated_at', 'due_date', 'is_overdue', 
             'completed_today', 'supervisor_comments'
         ]
@@ -56,7 +57,10 @@ class BulkStatusUpdateSerializer(serializers.Serializer):
     supervisor_comments = serializers.CharField(required=False, allow_blank=True)
 
 class DashboardStatsSerializer(serializers.Serializer):
+    total_submissions = serializers.IntegerField()
     total_pending = serializers.IntegerField()
+    approved = serializers.IntegerField()
+    rejected = serializers.IntegerField()
     overdue = serializers.IntegerField()
     under_review = serializers.IntegerField()
     completed_today = serializers.IntegerField()

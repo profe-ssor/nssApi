@@ -21,3 +21,21 @@ class Supervisor(models.Model):
     
     def __str__(self):
            return f"{self.full_name} ({self.ghana_card_record})"
+
+class ActivityLog(models.Model):
+    ACTION_CHOICES = [
+        ('submission', 'Submission'),
+        ('approval', 'Approval'),
+        ('message', 'Message'),
+        ('personnel', 'Personnel'),
+    ]
+    supervisor = models.ForeignKey(MyUser, on_delete=models.CASCADE, related_name='activity_logs')
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    personnel = models.CharField(max_length=255, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    priority = models.CharField(max_length=10, blank=True)
+
+    class Meta:
+        ordering = ['-timestamp']

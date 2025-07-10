@@ -25,6 +25,15 @@ urlpatterns = [
     path('counts/grouped-by-supervisor/', views.count_nss_by_supervisor, name='count-nss-by-supervisor'),
     path('counts/grouped-by-admin/', views.count_nss_by_admin, name='count-nss-by-admin'),
 
+    path('departments/', views.department_choices, name='department-choices'),
+
+    path('counts/status/supervisor/', views.count_by_status_for_supervisor),
+    path('counts/performance/supervisor/', views.count_by_performance_for_supervisor),
+
+    path('assigned-personnel/', views.assigned_personnel_details),
+
+    path('performance_choices/', views.performance_choices, name='performance-choices'),
+    path('personnel/<int:pk>/', views.get_personnel_detail),
 
 # 
 ]

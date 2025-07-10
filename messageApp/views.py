@@ -6,105 +6,153 @@ from rest_framework import status
 from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import date
+from django.shortcuts import render
+from django.core.paginator import Paginator
 
 from file_uploads.models import UploadPDF
 from messageApp.utils import get_allowed_recipient_ids
 from nss_personnel.models import NSSPersonnel
 from nss_supervisors.models import Supervisor
 from .models import Message, UserConnection
-from .serializers import MessageSerializer, UserConnectionSerializer, MessageStatsSerializer, UserDropdownSerializer
+from .serializers import MessageSerializer, UserConnectionSerializer, MessageStatsSerializer, UserDropdownSerializer, MessageListSerializer
 from digital360Api.models import MyUser
+from nss_supervisors.views import log_message_sent
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_message(request):
-    sender = request.user
-    receiver_id = request.data.get('receiver')
-    subject = request.data.get('subject', '')
-    content = request.data.get('content')
-    attachment_id = request.data.get('attachment')
-    reply_to_id = request.data.get('reply_to')
-    forward_from_id = request.data.get('forward_from')
-    priority = request.data.get('priority', 'medium')
-    message_type = request.data.get('message_type', 'inquiry')
-
-    if not receiver_id:
-        return Response({'error': 'Receiver ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        receiver = MyUser.objects.get(id=receiver_id)
-    except MyUser.DoesNotExist:
-        return Response({'error': 'Receiver not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Check if sender can message the receiver
-    # Check if receiver is in allowed recipient list
-    allowed_recipient_ids = get_allowed_recipient_ids(sender)
-    if receiver.id not in allowed_recipient_ids:
-        return Response({
-            'error': 'You are not authorized to send messages to this user.'
-        }, status=status.HTTP_403_FORBIDDEN)
-
+    """
+    Send a message from one user to another
+    """
+    data = request.data.copy()
+    data['sender'] = request.user.id
     
+    # Handle both 'recipient' and 'receiver' field names for backward compatibility
+    if 'receiver' in data and 'recipient' not in data:
+        data['recipient'] = data['receiver']
+    elif 'recipient' in data and 'receiver' not in data:
+        data['receiver'] = data['recipient']
+    
+    serializer = MessageSerializer(data=data)
+    if serializer.is_valid():
+        message = serializer.save()
+        
+        # Log the activity if sender is a supervisor
+        if request.user.user_type == 'supervisor':
+            try:
+                recipient_id = data.get('recipient') or data.get('receiver')
+                if recipient_id:
+                    recipient = MyUser.objects.get(id=recipient_id)
+                    log_message_sent(request.user, recipient)
+            except MyUser.DoesNotExist:
+                pass  # Logging is optional, don't fail if recipient not found
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    message = Message(
-        sender=sender,
-        receiver=receiver,
-        subject=subject,
-        content=content,
-        priority=priority,
-        message_type=message_type
-    )
 
-    if attachment_id:
-        try:
-            pdf = UploadPDF.objects.get(id=attachment_id, is_signed=True, user=sender)
-            message.attachment = pdf
-        except UploadPDF.DoesNotExist:
-            return Response({
-                'error': 'Invalid attachment ID or PDF is not signed.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-    if reply_to_id:
-        try:
-            original_message = Message.objects.get(id=reply_to_id)
-            message.reply_to = original_message
-
-            if original_message.receiver == request.user:
-                original_message.is_read = True
-                original_message.save()
-        except Message.DoesNotExist:
-            return Response({
-                'error': 'Reply-to message not found.'
-            }, status=status.HTTP_404_NOT_FOUND)
-
-    # Handle message forwarding
-    if forward_from_id:
-        try:
-            forwarded_message = Message.objects.get(id=forward_from_id)
-            # Check if user has permission to forward this message
-            if forwarded_message.sender != sender and forwarded_message.receiver != sender:
-                return Response({
-                    'error': 'You can only forward messages you sent or received.'
-                }, status=status.HTTP_403_FORBIDDEN)
-            
-            message.forwarded_from = forwarded_message
-            message.is_forwarded = True
-            # If forwarding, prepend "Forwarded: " to content if not already there
-            if not content.startswith('Forwarded: '):
-                message.content = f"Forwarded: {content}"
-        except Message.DoesNotExist:
-            return Response({
-                'error': 'Message to forward not found.'
-            }, status=status.HTTP_404_NOT_FOUND)
-
-    message.save()
-    serializer = MessageSerializer(message)
-
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_messages(request):
+    """
+    Get messages for the current user (sent and received)
+    """
+    user = request.user
+    messages = Message.objects.filter(
+        Q(sender=user) | Q(recipient=user)
+    ).select_related('sender', 'recipient').order_by('-timestamp')
+    
+    # Apply filters
+    message_type = request.GET.get('type')
+    if message_type == 'sent':
+        messages = messages.filter(sender=user)
+    elif message_type == 'received':
+        messages = messages.filter(recipient=user)
+    
+    # Pagination
+    page_size = int(request.GET.get('page_size', 20))
+    page = int(request.GET.get('page', 1))
+    
+    paginator = Paginator(messages, page_size)
+    page_obj = paginator.get_page(page)
+    
+    serializer = MessageListSerializer(page_obj, many=True)
+    
     return Response({
-        'success': 'Message sent successfully.',
-        'message': serializer.data
-    }, status=status.HTTP_201_CREATED)
+        'results': serializer.data,
+        'count': paginator.count,
+        'total_pages': paginator.num_pages,
+        'current_page': page,
+        'next': page_obj.has_next(),
+        'previous': page_obj.has_previous()
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_message_detail(request, pk):
+    """
+    Get detailed information about a specific message
+    """
+    user = request.user
+    try:
+        message = Message.objects.filter(
+            pk=pk
+        ).filter(
+            Q(sender=user) | Q(recipient=user)
+        ).first()
+        
+        if not message:
+            return Response(
+                {'error': 'Message not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        serializer = MessageSerializer(message)
+        return Response(serializer.data)
+    except Message.DoesNotExist:
+        return Response(
+            {'error': 'Message not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def mark_as_read(request, pk):
+    """
+    Mark a message as read
+    """
+    user = request.user
+    try:
+        message = Message.objects.get(
+            pk=pk,
+            recipient=user,
+            is_read=False
+        )
+        message.is_read = True
+        message.save()
+        serializer = MessageSerializer(message)
+        return Response(serializer.data)
+    except Message.DoesNotExist:
+        return Response(
+            {'error': 'Message not found or already read'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def unread_count(request):
+    """
+    Get count of unread messages for the current user
+    """
+    count = Message.objects.filter(
+        recipient=request.user,
+        is_read=False
+    ).count()
+    return Response({'unread_count': count})
 
 
 @api_view(['GET'])
@@ -178,7 +226,6 @@ def message_stats(request):
     
     serializer = MessageStatsSerializer(stats)
     return Response(serializer.data)
-
 
 
 @api_view(['POST'])
@@ -300,9 +347,6 @@ def today_messages(request):
     
     serializer = MessageSerializer(messages, many=True)
     return Response(serializer.data)
-
-
-
 
 
 @api_view(['GET'])

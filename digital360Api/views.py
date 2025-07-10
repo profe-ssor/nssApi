@@ -17,11 +17,25 @@ from nss_supervisors.models import Supervisor
 from nss_supervisors.serializers import SupervisorSerializer
 
 from .models import  MyUser, OTPVerification, Region,  UniversityRecord, GhanaCardRecord
-from digital360Api.serializers import  GhanaCardRecordSerializer, OTPVerifySerializer, RegionSerializer,  UniversityRecordSerializer, UserSerializer
+from digital360Api.serializers import  GhanaCardRecordSerializer, OTPVerifySerializer, RegionSerializer,  UniversityRecordSerializer, UserSerializer, PasswordChangeSerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer, RegionalOverviewSerializer
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.mail import send_mail
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+
+from file_uploads.models import UploadPDF
+from evaluations.models import Evaluation
+from .serializers import WorkplaceSerializer
+from .models import Workplace
+from .services import detect_ghost_personnel_during_submission, calculate_severity, send_ghost_alert_to_admin
+from .models import GhostDetection
+from .serializers import GhostDetectionSerializer
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
 
 
 @api_view(['GET'])
@@ -206,6 +220,7 @@ def count_universityDatabase(request):
 
 # Login using email and password endpoints
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login(request):
     print('Request Data:', request.data)
     email = request.data.get('email')
@@ -505,3 +520,370 @@ def assign_supervisors_to_admin(request):
     
     return Response({'success': 'Supervisors assigned successfully to admin'}, 
                    status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """
+    Change password for authenticated user
+    """
+    serializer = PasswordChangeSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        current_password = serializer.validated_data['current_password']
+        new_password = serializer.validated_data['new_password']
+        
+        # Check if current password is correct
+        if not user.check_password(current_password):
+            return Response({'error': 'Current password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Set new password
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    """
+    Request password reset - sends OTP to user's email
+    """
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        
+        try:
+            user = get_user_model().objects.get(email=email)
+            
+            # Generate OTP for password reset
+            otp_code = str(random.randint(100000, 999999))
+            otp_expires_at = timezone.now() + timezone.timedelta(minutes=10)
+            
+            # Create OTP record
+            OTPVerification.objects.create(
+                user=user,
+                otp_code=otp_code,
+                expires_at=otp_expires_at
+            )
+            
+            # Send email with OTP
+            subject = "Password Reset Request"
+            message = f"""
+            Hi {user.username},
+            
+            You requested a password reset. Here is your OTP: {otp_code}
+            It expires in 10 minutes.
+            
+            If you didn't request this, please ignore this email.
+            
+            Best regards,
+            NSS Team
+            """
+            
+            try:
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [user.email],
+                    fail_silently=False,
+                )
+                return Response({
+                    'message': 'Password reset OTP sent to your email',
+                    'email': user.email
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({
+                    'error': 'Failed to send email. Please try again.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except get_user_model().DoesNotExist:
+            return Response({
+                'error': 'No user found with this email address'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    """
+    Confirm password reset with OTP and set new password
+    """
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+        new_password = serializer.validated_data['new_password']
+        
+        try:
+            user = get_user_model().objects.get(email=email)
+            user_otp = OTPVerification.objects.filter(user=user).last()
+            
+            if not user_otp:
+                return Response({'error': 'OTP not found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if OTP has already been used
+            if user_otp.is_used:
+                return Response({'error': 'This OTP has already been used'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if OTP is valid
+            if user_otp.otp_code == otp_code:
+                if user_otp.expires_at > timezone.now():
+                    # Mark OTP as used
+                    user_otp.is_used = True
+                    user_otp.save()
+                    
+                    # Set new password
+                    user.set_password(new_password)
+                    user.save()
+                    
+                    return Response({
+                        'message': 'Password reset successfully. You can now log in with your new password.'
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        'error': 'The OTP has expired. Please request a new one.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'error': 'Invalid OTP entered. Please enter a valid OTP.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except get_user_model().DoesNotExist:
+            return Response({
+                'error': 'No user found with this email address'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_region_data(request):
+    # Only allow admins
+    user = request.user
+    if getattr(user, 'user_type', None) != 'admin':
+        return Response({'error': 'Only admins can access this endpoint'}, status=403)
+
+    regions = Region.objects.all()
+    data = []
+    for region in regions:
+        # Personnel in this region
+        personnel_qs = NSSPersonnel.objects.filter(region_of_posting=region)
+        total_personnel = personnel_qs.count()
+
+        # Supervisors in this region
+        supervisor_qs = Supervisor.objects.filter(assigned_region=region)
+        supervisor_count = supervisor_qs.count()
+
+        # Submissions (UploadPDF and Evaluation) for personnel in this region
+        personnel_users = [p.user for p in personnel_qs if p.user]
+        # UploadPDFs
+        pdfs = UploadPDF.objects.filter(user__in=personnel_users)
+        # Evaluations
+        evals = Evaluation.objects.filter(nss_personnel__in=personnel_users)
+
+        # Pending and completed submissions
+        pending_submissions = pdfs.filter(status__in=['pending', 'under_review']).count() + evals.filter(status__in=['pending', 'under_review']).count()
+        completed_submissions = pdfs.filter(status='approved').count() + evals.filter(status='approved').count()
+
+        data.append({
+            'region': region.name,
+            'total_personnel': total_personnel,
+            'pending_submissions': pending_submissions,
+            'completed_submissions': completed_submissions,
+            'supervisor_count': supervisor_count,
+        })
+
+    serializer = RegionalOverviewSerializer(data, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def workplaces(request):
+    """Return all workplaces for admin/supervisor assignment."""
+    workplaces = Workplace.objects.all()
+    serializer = WorkplaceSerializer(workplaces, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_ghost_dashboard(request):
+    """
+    Admin dashboard for managing ghost detections
+    """
+    if request.user.user_type != 'admin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Get all ghost detections
+    ghost_detections = GhostDetection.objects.all().select_related(
+        'nss_personnel', 'supervisor', 'assigned_admin'
+    )
+    
+    # Filter by status if provided
+    status_filter = request.GET.get('status')
+    if status_filter:
+        ghost_detections = ghost_detections.filter(status=status_filter)
+    
+    # Filter by severity if provided
+    severity_filter = request.GET.get('severity')
+    if severity_filter:
+        ghost_detections = ghost_detections.filter(severity=severity_filter)
+    
+    # Serialize the data
+    serializer = GhostDetectionSerializer(ghost_detections, many=True)
+    
+    # Calculate statistics
+    total_detections = ghost_detections.count()
+    pending_count = ghost_detections.filter(status='pending').count()
+    investigating_count = ghost_detections.filter(status='investigating').count()
+    resolved_count = ghost_detections.filter(status='resolved').count()
+    critical_count = ghost_detections.filter(severity='critical').count()
+    high_count = ghost_detections.filter(severity='high').count()
+    medium_count = ghost_detections.filter(severity='medium').count()
+    low_count = ghost_detections.filter(severity='low').count()
+    
+    return Response({
+        'detections': serializer.data,
+        'statistics': {
+            'total_detections': total_detections,
+            'pending_count': pending_count,
+            'investigating_count': investigating_count,
+            'resolved_count': resolved_count,
+            'critical_count': critical_count,
+            'high_count': high_count,
+            'medium_count': medium_count,
+            'low_count': low_count,
+        }
+    })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_investigate_ghost(request, detection_id):
+    """
+    Admin investigation action
+    """
+    if request.user.user_type != 'admin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        detection = GhostDetection.objects.get(id=detection_id)
+        admin = request.user.administrator_profile
+        
+        # Update status
+        detection.status = 'investigating'
+        detection.assigned_admin = admin
+        detection.save()
+        
+        # Log admin action
+        from nss_supervisors.models import ActivityLog
+        ActivityLog.objects.create(
+            supervisor=admin.user,
+            action='admin_investigation_started',
+            title=f"Admin Investigation: {detection.nss_personnel.full_name}",
+            description=f"Admin {admin.full_name} started investigation",
+            personnel=detection.nss_personnel.full_name,
+            priority='high'
+        )
+        
+        return Response({'status': 'investigation_started'})
+    except GhostDetection.DoesNotExist:
+        return Response({'error': 'Detection not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_resolve_ghost(request, detection_id):
+    """
+    Admin resolution action
+    """
+    if request.user.user_type != 'admin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        detection = GhostDetection.objects.get(id=detection_id)
+        admin = request.user.administrator_profile
+        
+        resolution_type = request.data.get('resolution_type')
+        action_taken = request.data.get('action_taken')
+        notes = request.data.get('notes')
+        
+        detection.status = resolution_type
+        detection.resolved_at = timezone.now()
+        detection.admin_action_taken = action_taken
+        detection.resolution_notes = notes
+        detection.assigned_admin = admin
+        detection.save()
+        
+        # Notify supervisor of resolution
+        from messageApp.models import Message
+        Message.objects.create(
+            sender=admin.user,
+            receiver=detection.supervisor.user,
+            subject=f"Ghost Detection Resolved: {detection.nss_personnel.full_name}",
+            content=f"""
+            Ghost detection investigation completed:
+            
+            Personnel: {detection.nss_personnel.full_name}
+            Resolution: {resolution_type}
+            Action Taken: {action_taken}
+            Notes: {notes}
+            
+            Admin: {admin.full_name}
+            """,
+            priority='medium',
+            message_type='report'
+        )
+        
+        return Response({'status': 'resolved'})
+    except GhostDetection.DoesNotExist:
+        return Response({'error': 'Detection not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def test_ghost_detection(request):
+    """
+    Test ghost detection for a specific NSS personnel
+    """
+    if request.user.user_type != 'admin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    personnel_id = request.data.get('personnel_id')
+    
+    try:
+        personnel = NSSPersonnel.objects.get(id=personnel_id)
+        
+        # Run ghost detection
+        ghost_flags = detect_ghost_personnel_during_submission(personnel)
+        
+        if ghost_flags:
+            # Create ghost detection record
+            ghost_detection = GhostDetection.objects.create(
+                nss_personnel=personnel,
+                supervisor=personnel.assigned_supervisor,
+                detection_flags=ghost_flags,
+                submission_attempt=False,
+                severity=calculate_severity(ghost_flags)
+            )
+            
+            # Send alert to admins
+            send_ghost_alert_to_admin(ghost_detection)
+            
+            return Response({
+                'status': 'ghost_detected',
+                'message': 'Ghost detection completed - Administrators notified',
+                'flags': ghost_flags,
+                'detection_id': ghost_detection.id,
+                'severity': ghost_detection.severity
+            })
+        else:
+            return Response({
+                'status': 'clean',
+                'message': 'No ghost detection flags found',
+                'flags': []
+            })
+            
+    except NSSPersonnel.DoesNotExist:
+        return Response({'error': 'Personnel not found'}, status=status.HTTP_404_NOT_FOUND)

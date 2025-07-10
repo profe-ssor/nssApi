@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view
 from rest_framework import status
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework_simplejwt.views import TokenRefreshView
 
 
 urlpatterns = [
@@ -18,6 +19,9 @@ urlpatterns = [
     path('messageApp/', include('messageApp.urls')),
     path('evaluations/', include('evaluations.urls')),
     path('favicon.ico', lambda request: HttpResponse(status=204)),
+    
+    # JWT Token endpoints
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
 @api_view(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])

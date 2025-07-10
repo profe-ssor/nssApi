@@ -91,3 +91,25 @@ class UserDropdownSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return get_user_full_name(obj)  # ✅ use the utility function
 
+class MessageListSerializer(serializers.ModelSerializer):
+    """Serializer for listing messages with basic information"""
+    sender_name = serializers.SerializerMethodField()
+    receiver_name = serializers.SerializerMethodField()
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    type_display = serializers.CharField(source='get_message_type_display', read_only=True)
+    
+    class Meta:
+        model = Message
+        fields = [
+            'id', 'sender', 'receiver', 'sender_name', 'receiver_name',
+            'subject', 'content', 'timestamp', 'is_read', 'priority',
+            'priority_display', 'message_type', 'type_display'
+        ]
+        read_only_fields = ['id', 'timestamp', 'is_read', 'sender_name', 'receiver_name']
+
+    def get_sender_name(self, obj):
+        return get_user_full_name(obj.sender)
+
+    def get_receiver_name(self, obj):
+        return get_user_full_name(obj.receiver)
+

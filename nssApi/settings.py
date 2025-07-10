@@ -79,7 +79,8 @@ AUTH_USER_MODEL = 'digital360Api.MyUser'
 ROOT_URLCONF = 'nssApi.urls'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
-    "https://cohort3-alpha.vercel.app"  
+    "http://127.0.0.1:4200",
+    "https://cohort3-alpha.vercel.app"
 ]
 CORS_ALLOW_CREDENTIALS = True
 

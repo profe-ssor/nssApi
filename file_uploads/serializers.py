@@ -8,12 +8,15 @@ class UploadPDFSerializer(serializers.ModelSerializer):
     receiver_name = serializers.SerializerMethodField()
     mark_as_signed = serializers.BooleanField(write_only=True, required=False)
     status = serializers.ChoiceField(choices=UploadPDF.STATUS_CHOICES, required=False)
+    uploaded_at = serializers.DateTimeField(read_only=True)
+    due_date = serializers.DateTimeField(required=False)
+    submitted_date = serializers.DateTimeField(required=False)
     
 
     class Meta:
         model = UploadPDF
         fields = [
-            'id', 'file_name', 'file',
+            'id', 'user', 'file_name', 'file',
             'signature_image', 'signature_drawing',
             'is_signed', 'signed_file',
             'uploaded_at', 'form_type', 'priority',
@@ -53,3 +56,34 @@ class UploadPDFSerializer(serializers.ModelSerializer):
             instance.save()
 
         return instance
+
+
+class UploadPDFListSerializer(serializers.ModelSerializer):
+    """Serializer for listing PDF uploads with basic information"""
+    sender_name = serializers.SerializerMethodField()
+    receiver_name = serializers.SerializerMethodField()
+    administrator_name = serializers.SerializerMethodField()
+    uploaded_at = serializers.DateTimeField(read_only=True)
+    due_date = serializers.DateTimeField(required=False)
+    submitted_date = serializers.DateTimeField(required=False)
+    
+    class Meta:
+        model = UploadPDF
+        fields = [
+            'id', 'user', 'file_name', 'form_type', 'priority', 'status',
+            'uploaded_at', 'is_signed', 'sender_name', 'receiver_name', 'administrator_name',
+            'due_date', 'submitted_date'
+        ]
+        read_only_fields = ['id', 'uploaded_at', 'is_signed']
+
+    def get_sender_name(self, obj):
+        return get_user_full_name(obj.user) if obj.user else None
+
+    def get_receiver_name(self, obj):
+        return get_user_full_name(obj.receiver) if obj.receiver else None
+
+    def get_administrator_name(self, obj):
+        # If receiver is an admin, return their name as administrator
+        if obj.receiver and obj.receiver.user_type == 'admin':
+            return get_user_full_name(obj.receiver)
+        return None

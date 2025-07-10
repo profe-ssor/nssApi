@@ -31,8 +31,6 @@ class MyUser(AbstractUser):
         blank=True,
     )
 
-
-
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
 
@@ -49,11 +47,6 @@ class MyUser(AbstractUser):
             self.is_staff = False
         
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.username} ({self.user_type})"
-
-
 
     def __str__(self):
         return f"{self.username} ({self.user_type})"
@@ -141,5 +134,43 @@ class OTPVerification(models.Model):
     expires_at = models.DateTimeField()
 
     def __str__(self):
-        return self.user.username
+        return str(self.user)
+
+
+# ===============================
+# Ghost Detection Model
+# ===============================
+class GhostDetection(models.Model):
+    SEVERITY_CHOICES = [
+        ('low', 'Low Risk'),
+        ('medium', 'Medium Risk'),
+        ('high', 'High Risk'),
+        ('critical', 'Critical Risk'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Admin Review'),
+        ('investigating', 'Under Investigation'),
+        ('resolved', 'Resolved'),
+        ('false_positive', 'False Positive'),
+        ('disciplinary_action', 'Disciplinary Action Taken'),
+    ]
+    
+    nss_personnel = models.ForeignKey('nss_personnel.NSSPersonnel', on_delete=models.CASCADE)
+    supervisor = models.ForeignKey('nss_supervisors.Supervisor', on_delete=models.CASCADE)
+    assigned_admin = models.ForeignKey('nss_admin.Administrator', on_delete=models.CASCADE, null=True, blank=True)
+    detection_flags = models.JSONField()
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submission_attempt = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_notes = models.TextField(blank=True)
+    admin_action_taken = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+    
+    def __str__(self):
+        return f"Ghost Detection: {self.nss_personnel.full_name} - {self.severity}"
     
