@@ -22,6 +22,8 @@ from nss_supervisors.views import log_document_upload, log_supervisor_activity
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from django.core.paginator import Paginator
+from digital360Api.services import detect_ghost_personnel
+from digital360Api.models import GhostDetection
 
 
 os.makedirs(os.path.join(settings.MEDIA_ROOT, 'signed_docs'), exist_ok=True)
@@ -383,6 +385,116 @@ def send_evaluation_form(request):
         except MyUser.DoesNotExist:
             return Response({"error": "Receiver not found."}, status=404)
 
+    # 🔍 GHOST DETECTION: Run security check if receiver is an admin
+    if receiver and receiver.user_type == 'admin':
+        try:
+            # Get current personnel ID
+            personnel_id = request.user.id
+            
+            # Run ghost detection
+            ghost_result = detect_ghost_personnel(personnel_id)
+            
+            # Always notify admin about the security check
+            from nss_admin.models import Administrator
+            from nss_personnel.models import NSSPersonnel
+            from nss_supervisors.models import Supervisor
+            from messageApp.models import Message
+            
+            try:
+                admin_instance = Administrator.objects.get(user=receiver)
+                personnel_instance = NSSPersonnel.objects.get(user=request.user)
+                
+                # Get the supervisor for this personnel using the correct field name
+                supervisor_instance = personnel_instance.assigned_supervisor
+                
+                # Create notification message for admin
+                if ghost_result['is_ghost']:
+                    # Ghost detected - create ghost detection record and notify
+                    if supervisor_instance:
+                        # Create ghost detection record
+                        GhostDetection.objects.create(
+                            nss_personnel=personnel_instance,
+                            supervisor=supervisor_instance,
+                            assigned_admin=admin_instance,
+                            detection_flags=ghost_result['flags'],
+                            severity=ghost_result['severity'],
+                            status='pending',
+                            submission_attempt=True
+                        )
+                        
+                        print(f"🚨 GHOST DETECTED: Personnel {request.user.get_full_name()} (ID: {personnel_id}) flagged during evaluation submission to admin {receiver.get_full_name()}")
+                    
+                    # Send urgent notification to admin
+                    Message.objects.create(
+                        sender=receiver,  # System message
+                        receiver=receiver,
+                        subject=f"🚨 URGENT: Ghost Personnel Detection - {request.user.get_full_name()}",
+                        content=f"""
+                        🚨 CRITICAL GHOST PERSONNEL DETECTION ALERT! 🚨
+                        
+                        A personnel has been flagged during evaluation submission:
+                        
+                        Personnel Details:
+                        • Name: {request.user.get_full_name()}
+                        • Ghana Card: {ghost_result.get('ghana_card_number', 'N/A')}
+                        • NSS ID: {personnel_instance.nss_id if personnel_instance else 'N/A'}
+                        
+                        Detection Flags:
+                        {chr(10).join([f"• {flag}" for flag in ghost_result['flags']])}
+                        
+                        Severity: {ghost_result['severity'].upper()}
+                        Detection Time: {timezone.now()}
+                        
+                        IMMEDIATE ACTION REQUIRED:
+                        1. Review the ghost detection record
+                        2. Investigate personnel authenticity
+                        3. Take appropriate disciplinary action
+                        
+                        The submission has been BLOCKED for security reasons.
+                        """,
+                        priority='high',
+                        message_type='alert'
+                    )
+                    
+                else:
+                    # No ghost detected - still notify admin about the security check
+                    Message.objects.create(
+                        sender=receiver,  # System message
+                        receiver=receiver,
+                        subject=f"✅ Security Check Completed - {request.user.get_full_name()}",
+                        content=f"""
+                        ✅ SECURITY VERIFICATION COMPLETED
+                        
+                        A personnel evaluation submission has passed security verification:
+                        
+                        Personnel Details:
+                        • Name: {request.user.get_full_name()}
+                        • Ghana Card: {ghost_result.get('ghana_card_number', 'N/A')}
+                        • NSS ID: {personnel_instance.nss_id if personnel_instance else 'N/A'}
+                        
+                        Security Check Result: ✅ PASSED
+                        Verification Time: {timezone.now()}
+                        
+                        The evaluation form has been submitted successfully.
+                        No further action required.
+                        """,
+                        priority='low',
+                        message_type='notification'
+                    )
+                    
+                    print(f"✅ Security check passed for {request.user.get_full_name()} - admin notified")
+                
+            except Administrator.DoesNotExist:
+                print(f"Warning: Administrator instance not found for user {receiver.email}")
+            except NSSPersonnel.DoesNotExist:
+                print(f"Warning: NSS Personnel instance not found for user {request.user.email}")
+            except Exception as e:
+                print(f"Error creating admin notification: {str(e)}")
+                
+        except Exception as e:
+            print(f"Error during ghost detection: {str(e)}")
+            # Continue with submission even if ghost detection fails
+
     # 🧠 Calculate due_date to be 21st of current or next month
     now = timezone.now()
     if now.day > 21:
@@ -397,7 +509,6 @@ def send_evaluation_form(request):
         due_month = now.month
 
     due_date = datetime(due_year, due_month, 21, 23, 59, 59, tzinfo=dt_timezone.utc)
-
 
     # ✅ Proceed with file processing
     if file_path:
@@ -441,6 +552,32 @@ def send_evaluation_form(request):
     # ✅ Copy the file to signed_file field
     upload.signed_file.save(upload.file.name, upload.file.file, save=False)
     upload.save()
+
+    # 🔍 Update ghost detection record with evaluation form ID if ghost was detected
+    if receiver and receiver.user_type == 'admin':
+        try:
+            from nss_admin.models import Administrator
+            from nss_personnel.models import NSSPersonnel
+            
+            admin_instance = Administrator.objects.get(user=receiver)
+            personnel_instance = NSSPersonnel.objects.get(user=request.user)
+            
+            ghost_detection = GhostDetection.objects.filter(
+                nss_personnel=personnel_instance,
+                assigned_admin=admin_instance,
+                status='pending'
+            ).first()
+            
+            if ghost_detection:
+                ghost_detection.evaluation_form_id = upload.id
+                ghost_detection.save()
+                print(f"Updated ghost detection record with evaluation form ID: {upload.id}")
+        except Administrator.DoesNotExist:
+            print(f"Warning: Administrator instance not found for user {receiver.email}")
+        except NSSPersonnel.DoesNotExist:
+            print(f"Warning: NSS Personnel instance not found for user {request.user.email}")
+        except Exception as e:
+            print(f"Error updating ghost detection record: {str(e)}")
 
     serializer = UploadPDFSerializer(upload)
     return Response({

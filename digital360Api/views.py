@@ -715,26 +715,43 @@ def admin_ghost_dashboard(request):
     """
     Admin dashboard for managing ghost detections
     """
-    if request.user.user_type != 'admin':
+    if not request.user.is_superuser:
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    print(f"🔍 Admin ghost dashboard accessed by: {request.user.email}")
     
     # Get all ghost detections
     ghost_detections = GhostDetection.objects.all().select_related(
         'nss_personnel', 'supervisor', 'assigned_admin'
     )
     
+    print(f"📊 Total ghost detections found: {ghost_detections.count()}")
+    
     # Filter by status if provided
     status_filter = request.GET.get('status')
     if status_filter:
         ghost_detections = ghost_detections.filter(status=status_filter)
+        print(f"🔍 Filtered by status '{status_filter}': {ghost_detections.count()} detections")
     
     # Filter by severity if provided
     severity_filter = request.GET.get('severity')
     if severity_filter:
         ghost_detections = ghost_detections.filter(severity=severity_filter)
+        print(f"🔍 Filtered by severity '{severity_filter}': {ghost_detections.count()} detections")
     
     # Serialize the data
-    serializer = GhostDetectionSerializer(ghost_detections, many=True)
+    try:
+        serializer = GhostDetectionSerializer(ghost_detections, many=True)
+        serialized_data = serializer.data
+        print(f"✅ Serialized {len(serialized_data)} detections successfully")
+        
+        # Debug: Print first detection if any
+        if serialized_data:
+            print(f"📋 First detection: {serialized_data[0]}")
+        
+    except Exception as e:
+        print(f"❌ Serialization error: {str(e)}")
+        return Response({'error': f'Serialization error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # Calculate statistics
     total_detections = ghost_detections.count()
@@ -746,8 +763,8 @@ def admin_ghost_dashboard(request):
     medium_count = ghost_detections.filter(severity='medium').count()
     low_count = ghost_detections.filter(severity='low').count()
     
-    return Response({
-        'detections': serializer.data,
+    response_data = {
+        'detections': serialized_data,
         'statistics': {
             'total_detections': total_detections,
             'pending_count': pending_count,
@@ -758,7 +775,11 @@ def admin_ghost_dashboard(request):
             'medium_count': medium_count,
             'low_count': low_count,
         }
-    })
+    }
+    
+    print(f"📈 Statistics: {response_data['statistics']}")
+    
+    return Response(response_data)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -766,7 +787,7 @@ def admin_investigate_ghost(request, detection_id):
     """
     Admin investigation action
     """
-    if request.user.user_type != 'admin':
+    if not request.user.is_superuser:
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
@@ -799,7 +820,7 @@ def admin_resolve_ghost(request, detection_id):
     """
     Admin resolution action
     """
-    if request.user.user_type != 'admin':
+    if not request.user.is_superuser:
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
@@ -845,45 +866,33 @@ def admin_resolve_ghost(request, detection_id):
 @permission_classes([IsAuthenticated])
 def test_ghost_detection(request):
     """
-    Test ghost detection for a specific NSS personnel
+    Test endpoint for ghost detection during evaluation submission
+    This simulates the ghost detection process for the frontend
     """
-    if request.user.user_type != 'admin':
-        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
-    
     personnel_id = request.data.get('personnel_id')
     
+    if not personnel_id:
+        return Response({'error': 'Personnel ID is required'}, status=400)
+    
     try:
-        personnel = NSSPersonnel.objects.get(id=personnel_id)
-        
         # Run ghost detection
-        ghost_flags = detect_ghost_personnel_during_submission(personnel)
+        ghost_result = detect_ghost_personnel(personnel_id)
         
-        if ghost_flags:
-            # Create ghost detection record
-            ghost_detection = GhostDetection.objects.create(
-                nss_personnel=personnel,
-                supervisor=personnel.assigned_supervisor,
-                detection_flags=ghost_flags,
-                submission_attempt=False,
-                severity=calculate_severity(ghost_flags)
-            )
-            
-            # Send alert to admins
-            send_ghost_alert_to_admin(ghost_detection)
-            
+        if ghost_result['is_ghost']:
             return Response({
                 'status': 'ghost_detected',
-                'message': 'Ghost detection completed - Administrators notified',
-                'flags': ghost_flags,
-                'detection_id': ghost_detection.id,
-                'severity': ghost_detection.severity
-            })
+                'message': 'Ghost personnel detected during security verification',
+                'details': ghost_result
+            }, status=200)
         else:
             return Response({
                 'status': 'clean',
-                'message': 'No ghost detection flags found',
-                'flags': []
-            })
+                'message': 'Security verification passed',
+                'details': ghost_result
+            }, status=200)
             
-    except NSSPersonnel.DoesNotExist:
-        return Response({'error': 'Personnel not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Error during ghost detection: {str(e)}'
+        }, status=500)

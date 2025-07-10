@@ -120,7 +120,7 @@ class GhostDetectionSerializer(serializers.ModelSerializer):
     assigned_admin_name = serializers.CharField(source='assigned_admin.full_name', read_only=True)
     personnel_ghana_card = serializers.CharField(source='nss_personnel.ghana_card_record', read_only=True)
     personnel_nss_id = serializers.CharField(source='nss_personnel.nss_id', read_only=True)
-    personnel_region = serializers.CharField(source='nss_personnel.region_of_posting', read_only=True)
+    personnel_region = serializers.CharField(source='nss_personnel.region_of_posting.name', read_only=True)
     personnel_department = serializers.CharField(source='nss_personnel.department', read_only=True)
     
     class Meta:

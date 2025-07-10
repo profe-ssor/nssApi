@@ -40,8 +40,8 @@ urlpatterns = [
     path('dashboard/region-data/', views.admin_region_data, name='admin_region_data'),
 
     # Ghost Detection URLs
-    path('admin/ghost-dashboard/', views.admin_ghost_dashboard, name='admin_ghost_dashboard'),
-    path('admin/ghost-investigate/<int:detection_id>/', views.admin_investigate_ghost, name='admin_investigate_ghost'),
-    path('admin/ghost-resolve/<int:detection_id>/', views.admin_resolve_ghost, name='admin_resolve_ghost'),
-    path('admin/test-ghost-detection/', views.test_ghost_detection, name='test_ghost_detection'),
+    path('ghost-dashboard/', views.admin_ghost_dashboard, name='admin_ghost_dashboard'),
+    path('ghost-investigate/<int:detection_id>/', views.admin_investigate_ghost, name='admin_investigate_ghost'),
+    path('ghost-resolve/<int:detection_id>/', views.admin_resolve_ghost, name='admin_resolve_ghost'),
+    path('test-ghost-detection/', views.test_ghost_detection, name='test_ghost_detection'),
 ]

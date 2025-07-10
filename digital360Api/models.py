@@ -167,6 +167,7 @@ class GhostDetection(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolution_notes = models.TextField(blank=True)
     admin_action_taken = models.TextField(blank=True)
+    evaluation_form_id = models.IntegerField(null=True, blank=True, help_text="ID of the evaluation form that triggered this detection")
     
     class Meta:
         ordering = ['-timestamp']

@@ -5,6 +5,55 @@ from nss_admin.models import Administrator
 from messageApp.models import Message
 from nss_supervisors.models import ActivityLog
 
+def detect_ghost_personnel(personnel_id):
+    """
+    Detect ghost personnel by personnel ID
+    Returns a dictionary with detection results
+    """
+    try:
+        # Get the personnel
+        personnel = NSSPersonnel.objects.get(id=personnel_id)
+        
+        # Run ghost detection
+        ghost_flags = detect_ghost_personnel_during_submission(personnel)
+        
+        # Determine if it's a ghost
+        is_ghost = len(ghost_flags) > 0
+        
+        # Calculate severity
+        severity = calculate_severity(ghost_flags)
+        
+        return {
+            'is_ghost': is_ghost,
+            'personnel_id': personnel_id,
+            'personnel_name': personnel.full_name,
+            'ghana_card_number': personnel.ghana_card_record,
+            'flags': ghost_flags,
+            'severity': severity,
+            'reason': '; '.join(ghost_flags) if ghost_flags else 'No issues detected'
+        }
+        
+    except NSSPersonnel.DoesNotExist:
+        return {
+            'is_ghost': True,
+            'personnel_id': personnel_id,
+            'personnel_name': 'Unknown',
+            'ghana_card_number': '',
+            'flags': ['❌ Personnel not found in NSS database'],
+            'severity': 'critical',
+            'reason': 'Personnel not found in NSS database'
+        }
+    except Exception as e:
+        return {
+            'is_ghost': False,
+            'personnel_id': personnel_id,
+            'personnel_name': 'Error',
+            'ghana_card_number': '',
+            'flags': [f'❌ Error during detection: {str(e)}'],
+            'severity': 'error',
+            'reason': f'Error during detection: {str(e)}'
+        }
+
 def detect_ghost_personnel_during_submission(nss_personnel):
     """
     Comprehensive ghost detection using CharField ghana_card_record
