@@ -24,6 +24,7 @@ from rest_framework import status
 from django.core.paginator import Paginator
 from digital360Api.services import detect_ghost_personnel
 from digital360Api.models import GhostDetection
+from django.http import FileResponse, Http404
 
 
 os.makedirs(os.path.join(settings.MEDIA_ROOT, 'signed_docs'), exist_ok=True)
@@ -34,7 +35,8 @@ def apply_signature(pdf_instance, signature_bytes, position=None):
     """
     try:
         temp_signature = BytesIO(signature_bytes)
-        pdf_path = pdf_instance.file.path
+        # Use the latest signed_file if it exists, otherwise the original file
+        pdf_path = pdf_instance.signed_file.path if pdf_instance.signed_file else pdf_instance.file.path
         doc = fitz.open(pdf_path)
 
         if not doc.page_count:
@@ -201,20 +203,12 @@ def list_pdfs(request):
 def get_pdf(request, pk):
     """Get details of a specific PDF"""
     try:
-        # First try to get PDF owned by current user
-        pdf = UploadPDF.objects.get(pk=pk, user=request.user)
-    except UploadPDF.DoesNotExist:
-        # If not found, try to get PDF without user filter (for testing/debugging)
-        try:
-            pdf = UploadPDF.objects.get(pk=pk)
-            # If PDF has no user, allow access (for testing purposes)
-            if pdf.user is None:
-                print(f"Warning: PDF {pk} has no user assigned - allowing access for testing")
-            else:
-                # PDF belongs to another user - deny access
-                return Response({"error": "PDF not found"}, status=404)
-        except UploadPDF.DoesNotExist:
+        # Allow access if the current user is either the uploader or the receiver
+        pdf = UploadPDF.objects.get(pk=pk)
+        if not (pdf.user == request.user or pdf.receiver == request.user):
             return Response({"error": "PDF not found"}, status=404)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "PDF not found"}, status=404)
     
     serializer = UploadPDFSerializer(pdf)
     return Response(serializer.data)
@@ -313,20 +307,12 @@ def list_all_signed_pdfs(request):
 def sign_with_image(request, pk):
     """Sign a PDF with a drawing (uploaded file)"""
     try:
-        # First try to get PDF owned by current user
-        pdf = UploadPDF.objects.get(pk=pk, user=request.user)
-    except UploadPDF.DoesNotExist:
-        # If not found, try to get PDF without user filter (for testing/debugging)
-        try:
-            pdf = UploadPDF.objects.get(pk=pk)
-            # If PDF has no user, allow access (for testing purposes)
-            if pdf.user is None:
-                print(f"Warning: PDF {pk} has no user assigned - allowing access for testing")
-            else:
-                # PDF belongs to another user - deny access
-                return Response({"error": "PDF not found"}, status=404)
-        except UploadPDF.DoesNotExist:
+        # Allow access if the current user is either the uploader or the receiver
+        pdf = UploadPDF.objects.get(pk=pk)
+        if not (pdf.user == request.user or pdf.receiver == request.user):
             return Response({"error": "PDF not found"}, status=404)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "PDF not found"}, status=404)
 
     # Get signature file directly instead of base64
     signature_file = request.FILES.get('signature')
@@ -713,3 +699,16 @@ def admin_update_pdf_status(request, pk):
         'message': f'Status updated to {status_value}.',
         'data': serializer.data
     })
+
+def serve_pdf(request, path):
+    """Serve a PDF from signed_docs without X-Frame-Options for local development iframe embedding."""
+    import os
+    from django.conf import settings
+    file_path = os.path.join(settings.MEDIA_ROOT, 'signed_docs', path)
+    if not os.path.exists(file_path):
+        raise Http404("PDF not found")
+    response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
+    # Remove X-Frame-Options header for local dev
+    if 'X-Frame-Options' in response:
+        del response['X-Frame-Options']
+    return response

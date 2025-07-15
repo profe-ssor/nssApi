@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+from .views import serve_pdf
+from django.urls import re_path
 
 urlpatterns = [
     # Existing PDF operations
@@ -20,4 +22,8 @@ urlpatterns = [
     # ✅ Add this new endpoint for updating evaluation status
     path('evaluation-forms/<int:pk>/update-status/', views.update_evaluation_status, name='update_evaluation_status'),
     path('admin/evaluation-forms/<int:pk>/update-status/', views.admin_update_pdf_status, name='admin_update_pdf_status'),
+]
+
+urlpatterns += [
+    re_path(r'^media/signed_docs/(?P<path>.+)$', serve_pdf),
 ]

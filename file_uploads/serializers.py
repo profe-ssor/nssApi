@@ -66,13 +66,16 @@ class UploadPDFListSerializer(serializers.ModelSerializer):
     uploaded_at = serializers.DateTimeField(read_only=True)
     due_date = serializers.DateTimeField(required=False)
     submitted_date = serializers.DateTimeField(required=False)
+    file = serializers.FileField(read_only=True)
+    signed_file = serializers.FileField(read_only=True)
     
     class Meta:
         model = UploadPDF
         fields = [
             'id', 'user', 'file_name', 'form_type', 'priority', 'status',
             'uploaded_at', 'is_signed', 'sender_name', 'receiver_name', 'administrator_name',
-            'due_date', 'submitted_date'
+            'due_date', 'submitted_date',
+            'file', 'signed_file',
         ]
         read_only_fields = ['id', 'uploaded_at', 'is_signed']
 
