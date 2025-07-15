@@ -593,3 +593,32 @@ def admin_activity_logs(request):
     activities = ActivityLog.objects.filter(supervisor__id__in=supervisor_ids).order_by('-timestamp')[:limit]
     serializer = ActivityLogSerializer(activities, many=True)
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def personnel_evaluation_list(request):
+    """
+    List all evaluations and PDF forms submitted by the current personnel (logged-in user)
+    """
+    if getattr(request.user, 'user_type', None) != 'nss':
+        return Response({'error': 'Only personnel can access this endpoint'}, status=403)
+
+    # Evaluations
+    eval_qs = Evaluation.objects.filter(nss_personnel=request.user)
+    eval_qs = eval_qs.order_by('-created_at')
+    eval_serialized = EvaluationListSerializer(eval_qs, many=True).data
+    for e in eval_serialized:
+        e['source'] = 'evaluation'
+
+    # UploadPDFs
+    pdf_qs = UploadPDF.objects.filter(user=request.user)
+    pdf_qs = pdf_qs.order_by('-uploaded_at')
+    pdf_serialized = UploadPDFListSerializer(pdf_qs, many=True).data
+    for p in pdf_serialized:
+        p['source'] = 'pdf'
+
+    # Combine and sort
+    combined = eval_serialized + pdf_serialized
+    combined.sort(key=lambda x: x.get('due_date') or x.get('uploaded_at') or '', reverse=True)
+
+    return Response({'results': combined})

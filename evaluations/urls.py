@@ -19,4 +19,5 @@ urlpatterns = [
     # Bulk actions
     path('evaluations/bulk-update/', views.bulk_status_update, name='bulk-status-update'),
     path('admin/activity/', views.admin_activity_logs, name='admin-activity-logs'),
+    path('personnel/evaluations/', views.personnel_evaluation_list, name='personnel-evaluations'),
 ]
