@@ -58,3 +58,15 @@ class NSSPersonnel(models.Model):
     def __str__(self):
            return f"{self.full_name} ({self.nss_id})"
     
+
+class ArchivedNSSPersonnel(models.Model):
+    ghana_card_record = models.CharField(max_length=20, unique=True)
+    nss_id = models.CharField(max_length=25)
+    full_name = models.CharField(max_length=255)
+    batch_year = models.CharField(max_length=10)
+    completion_date = models.CharField(max_length=10)
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.nss_id}) - Archived"
+    

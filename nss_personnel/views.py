@@ -10,7 +10,7 @@ from digital360Api.permissions import IsAdmin, IsSupervisor
 from digital360Api.serializers import UserSerializer
 from nss_admin.models import Administrator
 from nss_admin.serializers import AdministratorSerializer
-from nss_personnel.models import NSSPersonnel
+from nss_personnel.models import NSSPersonnel, ArchivedNSSPersonnel
 from nss_personnel.serializer import AdminUpdateNSSPersonnelSerializer, NSSPersonnelSerializer, SupervisorUpdateNSSPersonnelSerializer, NSSPersonnelListSerializer
 from nss_supervisors.models import Supervisor
 from nss_supervisors.serializers import SupervisorSerializer
@@ -22,6 +22,9 @@ from nss_supervisors.serializers import SupervisorSerializer
 from nss_personnel.serializer import NSSPersonnelSerializer
 from django.core.paginator import Paginator
 from nss_supervisors.views import log_personnel_assignment
+from datetime import datetime
+from evaluations.models import Evaluation
+from file_uploads.models import UploadPDF
 
 # Enpoint for savin NssPersonel Database
 
@@ -29,6 +32,17 @@ from nss_supervisors.views import log_personnel_assignment
 def NssPersonelDatabase(request):
     data = request.data
     user_id = data.get('user_id') 
+
+    # Year validation
+    start_date = data.get('start_date')
+    if start_date:
+        try:
+            batch_year = int(start_date[:4])
+            current_year = datetime.now().year
+            if batch_year != current_year:
+                return Response({'error': f'Batch year must be {current_year}. You entered {batch_year}.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({'error': 'Invalid start_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         user = MyUser.objects.get(id=user_id) 
@@ -296,7 +310,18 @@ def create_personnel(request):
     Create a new NSS personnel
     """
     data = request.data.copy()
-    
+
+    # Year validation
+    start_date = data.get('start_date')
+    if start_date:
+        try:
+            batch_year = int(start_date[:4])
+            current_year = datetime.now().year
+            if batch_year != current_year:
+                return Response({'error': f'Batch year must be {current_year}. You entered {batch_year}.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({'error': 'Invalid start_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = NSSPersonnelSerializer(data=data)
     if serializer.is_valid():
         personnel = serializer.save()
@@ -351,7 +376,7 @@ def get_personnel_detail(request, pk):
     """
     try:
         personnel = NSSPersonnel.objects.get(pk=pk)
-        serializer = NSSPersonnelSerializer(personnel)
+        serializer = NSSPersonnelSerializer(personnel, context={'request': request})
         return Response(serializer.data)
     except NSSPersonnel.DoesNotExist:
         return Response(
@@ -397,3 +422,178 @@ def delete_personnel(request, pk):
             {'error': 'Personnel not found'}, 
             status=status.HTTP_404_NOT_FOUND
         )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdmin])
+def archived_personnel_list(request):
+    archived = ArchivedNSSPersonnel.objects.all().order_by('-archived_at')
+    data = [
+        {
+            'id': p.id,
+            'ghana_card_record': p.ghana_card_record,
+            'nss_id': p.nss_id,
+            'full_name': p.full_name,
+            'batch_year': p.batch_year,
+            'completion_date': p.completion_date,
+            'archived_at': p.archived_at,
+        }
+        for p in archived
+    ]
+    return Response(data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdmin])
+def restore_archived_personnel(request, pk):
+    try:
+        archived = ArchivedNSSPersonnel.objects.get(pk=pk)
+    except ArchivedNSSPersonnel.DoesNotExist:
+        return Response({'error': 'Archived personnel not found'}, status=404)
+    # Restore to NSSPersonnel
+    personnel = NSSPersonnel.objects.create(
+        ghana_card_record=archived.ghana_card_record,
+        nss_id=archived.nss_id,
+        full_name=archived.full_name,
+        start_date=archived.batch_year,
+        end_date=archived.completion_date,
+        phone='',  # Set as needed
+        status='active',
+        assigned_institution='',  # Set as needed
+        department='education',  # Set as needed
+        region_of_posting_id=1,  # Set as needed or update logic
+        user_id=None,  # Set as needed or update logic
+    )
+    archived.delete()
+    return Response({'message': 'Personnel restored successfully'})
+
+@api_view(['GET'])
+def get_personnel_by_user(request, user_id):
+    """
+    Get personnel record by user id
+    """
+    try:
+        personnel = NSSPersonnel.objects.get(user__id=user_id)
+        serializer = NSSPersonnelSerializer(personnel)
+        return Response(serializer.data)
+    except NSSPersonnel.DoesNotExist:
+        return Response({'error': 'Personnel not found for user id'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def recent_submissions(request, pk):
+    user = request.user
+    try:
+        personnel = NSSPersonnel.objects.get(pk=pk)
+        personnel_user_id = personnel.user.id if personnel.user else None
+    except NSSPersonnel.DoesNotExist:
+        return Response({'error': 'Personnel not found'}, status=404)
+    if not personnel_user_id:
+        return Response({'error': 'Personnel has no associated user'}, status=404)
+    # Evaluations sent to this admin for this personnel
+    evals = Evaluation.objects.filter(
+        nss_personnel__id=personnel_user_id,
+        supervisor=user
+    ).order_by('-created_at')
+    # PDF forms sent to this admin for this personnel
+    pdfs = UploadPDF.objects.filter(
+        user__id=personnel_user_id,
+        receiver=user,
+        form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project']
+    ).order_by('-uploaded_at')
+    print(f"[DEBUG] personnel_user_id: {personnel_user_id}")
+    print(f"[DEBUG] Evaluations count: {evals.count()}")
+    print(f"[DEBUG] PDFs count: {pdfs.count()}")
+    # Serialize as needed
+    evals_data = [{
+        'id': e.id,
+        'title': e.title,
+        'type': e.evaluation_type,
+        'status': e.status,
+        'submitted_date': e.created_at.isoformat() if e.created_at else None,
+        'reviewed_date': e.reviewed_at.isoformat() if e.reviewed_at else None,
+        'feedback': e.supervisor_comments,
+    } for e in evals]
+    pdfs_data = [{
+        'id': p.id,
+        'title': p.file_name,
+        'type': p.form_type,
+        'status': p.status,
+        'submitted_date': p.uploaded_at.isoformat() if p.uploaded_at else None,
+        'reviewed_date': None,
+        'feedback': None,
+    } for p in pdfs]
+    # Combine and sort by submitted_date
+    combined = evals_data + pdfs_data
+    combined.sort(key=lambda x: x['submitted_date'], reverse=True)
+    print(f"[DEBUG] Combined submissions count: {len(combined)}")
+    return Response(combined)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_evaluation_assignments(request):
+    """
+    Debug endpoint to check all evaluation submissions and their admin assignments
+    """
+    user = request.user
+    if getattr(user, 'user_type', None) != 'admin':
+        return Response({'error': 'Only admins can access this endpoint'}, status=403)
+    
+    # Get all evaluations
+    all_evaluations = Evaluation.objects.all().select_related('nss_personnel', 'supervisor')
+    all_pdfs = UploadPDF.objects.filter(
+        form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project']
+    ).select_related('user', 'receiver')
+    
+    # Filter evaluations assigned to current admin
+    admin_evaluations = all_evaluations.filter(supervisor=user)
+    admin_pdfs = all_pdfs.filter(receiver=user)
+    
+    # Prepare response data
+    response_data = {
+        'current_admin': {
+            'id': user.id,
+            'email': user.email,
+            'user_type': user.user_type
+        },
+        'total_evaluations': all_evaluations.count(),
+        'total_pdfs': all_pdfs.count(),
+        'admin_evaluations_count': admin_evaluations.count(),
+        'admin_pdfs_count': admin_pdfs.count(),
+        'evaluations_assigned_to_admin': [{
+            'id': e.id,
+            'title': e.title,
+            'personnel_name': e.nss_personnel.get_full_name() if e.nss_personnel else 'Unknown',
+            'personnel_id': e.nss_personnel.id if e.nss_personnel else None,
+            'supervisor_name': e.supervisor.get_full_name() if e.supervisor else 'None',
+            'supervisor_id': e.supervisor.id if e.supervisor else None,
+            'status': e.status,
+            'created_at': e.created_at
+        } for e in admin_evaluations],
+        'pdfs_assigned_to_admin': [{
+            'id': p.id,
+            'title': p.file_name,
+            'user_name': p.user.get_full_name() if p.user else 'Unknown',
+            'user_id': p.user.id if p.user else None,
+            'receiver_name': p.receiver.get_full_name() if p.receiver else 'None',
+            'receiver_id': p.receiver.id if p.receiver else None,
+            'status': p.status,
+            'uploaded_at': p.uploaded_at
+        } for p in admin_pdfs],
+        'all_evaluations_summary': [{
+            'id': e.id,
+            'title': e.title,
+            'personnel_name': e.nss_personnel.get_full_name() if e.nss_personnel else 'Unknown',
+            'supervisor_name': e.supervisor.get_full_name() if e.supervisor else 'None',
+            'supervisor_id': e.supervisor.id if e.supervisor else None,
+            'status': e.status
+        } for e in all_evaluations],
+        'all_pdfs_summary': [{
+            'id': p.id,
+            'title': p.file_name,
+            'user_name': p.user.get_full_name() if p.user else 'Unknown',
+            'receiver_name': p.receiver.get_full_name() if p.receiver else 'None',
+            'receiver_id': p.receiver.id if p.receiver else None,
+            'status': p.status
+        } for p in all_pdfs]
+    }
+    
+    return Response(response_data)

@@ -28,7 +28,7 @@ from file_uploads.models import UploadPDF
 from evaluations.models import Evaluation
 from .serializers import WorkplaceSerializer
 from .models import Workplace
-from .services import detect_ghost_personnel_during_submission, calculate_severity, send_ghost_alert_to_admin
+from .services import detect_ghost_personnel, detect_ghost_personnel_during_submission, calculate_severity, send_ghost_alert_to_admin
 from .models import GhostDetection
 from .serializers import GhostDetectionSerializer
 from rest_framework.decorators import api_view, permission_classes
@@ -36,6 +36,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+import traceback
 
 
 @api_view(['GET'])
@@ -272,6 +274,7 @@ def login(request):
             'refresh': str(refresh),
             'access': access_token,
             'user': { 
+                'id': user.id,
                 'email': user.email,
                 'role': role,  
                 'full_name': full_name,
@@ -862,6 +865,7 @@ def admin_resolve_ghost(request, detection_id):
     except GhostDetection.DoesNotExist:
         return Response({'error': 'Detection not found'}, status=status.HTTP_404_NOT_FOUND)
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def test_ghost_detection(request):
@@ -870,15 +874,37 @@ def test_ghost_detection(request):
     This simulates the ghost detection process for the frontend
     """
     personnel_id = request.data.get('personnel_id')
+    print(f"[DEBUG] Incoming test_ghost_detection request with personnel_id: {personnel_id}")
     
     if not personnel_id:
+        print("[ERROR] No personnel_id provided in request data.")
         return Response({'error': 'Personnel ID is required'}, status=400)
     
     try:
         # Run ghost detection
         ghost_result = detect_ghost_personnel(personnel_id)
+        print(f"[DEBUG] Ghost detection result: {ghost_result}")
         
         if ghost_result['is_ghost']:
+            # Create a GhostDetection record
+            try:
+                personnel = NSSPersonnel.objects.get(id=personnel_id)
+                supervisor = personnel.assigned_supervisor
+                # Use the first admin as assigned_admin (or None if not available)
+                from nss_admin.models import Administrator
+                admin = Administrator.objects.first()
+                detection = GhostDetection.objects.create(
+                    nss_personnel=personnel,
+                    supervisor=supervisor,
+                    assigned_admin=admin,
+                    detection_flags=ghost_result['flags'],
+                    severity=ghost_result['severity'],
+                    status='pending',
+                    submission_attempt=True
+                )
+                print(f"[DEBUG] Created GhostDetection record: {detection}")
+            except Exception as db_exc:
+                print(f"[ERROR] Could not create GhostDetection record: {db_exc}")
             return Response({
                 'status': 'ghost_detected',
                 'message': 'Ghost personnel detected during security verification',
@@ -892,7 +918,10 @@ def test_ghost_detection(request):
             }, status=200)
             
     except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[ERROR] Exception in test_ghost_detection: {e}\n{tb}")
         return Response({
             'status': 'error',
-            'message': f'Error during ghost detection: {str(e)}'
+            'message': f'Error during ghost detection: {str(e)}',
+            'traceback': tb
         }, status=500)

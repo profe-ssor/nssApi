@@ -13,7 +13,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('digital360Api.urls')),
     path('nss_personnel/', include('nss_personnel.urls')),
-    path('nss_supervisor/', include('nss_supervisors.urls')),
+    path('nss_supervisors/', include('nss_supervisors.urls')),
     path('nss_admin/', include('nss_admin.urls')),
     path('file_uploads/', include('file_uploads.urls')),
     path('messageApp/', include('messageApp.urls')),

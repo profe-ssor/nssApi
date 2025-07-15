@@ -175,3 +175,62 @@ class GhostDetection(models.Model):
     def __str__(self):
         return f"Ghost Detection: {self.nss_personnel.full_name} - {self.severity}"
     
+
+class OutgoingNSSPersonnel(models.Model):
+    """
+    Database to store outgoing NSS personnel who have completed their service.
+    This prevents duplicate Ghana Card submissions for new batches.
+    """
+    ghana_card_id = models.CharField(max_length=20, unique=True, help_text="Ghana Card ID to prevent duplicates")
+    nss_id = models.CharField(max_length=25, help_text="Original NSS ID")
+    full_name = models.CharField(max_length=255, help_text="Full name of personnel")
+    service_start_date = models.CharField(max_length=10, help_text="When service started")
+    service_end_date = models.CharField(max_length=10, help_text="When service ended")
+    region_served = models.CharField(max_length=100, help_text="Region where they served")
+    department = models.CharField(max_length=50, help_text="Department they worked in")
+    institution_assigned = models.CharField(max_length=255, help_text="Institution they were assigned to")
+    supervisor_name = models.CharField(max_length=255, blank=True, null=True, help_text="Supervisor during service")
+    performance_rating = models.CharField(max_length=30, blank=True, null=True, help_text="Final performance rating")
+    completion_year = models.IntegerField(help_text="Year when service was completed")
+    transfer_date = models.DateTimeField(auto_now_add=True, help_text="When transferred to outgoing database")
+    transfer_reason = models.CharField(max_length=50, default='evaluation_submitted', help_text="Reason for transfer")
+    
+    class Meta:
+        verbose_name = "Outgoing NSS Personnel"
+        verbose_name_plural = "Outgoing NSS Personnel"
+        ordering = ['-transfer_date']
+    
+    def __str__(self):
+        return f"{self.full_name} ({self.ghana_card_id}) - Completed {self.completion_year}"
+    
+    @classmethod
+    def is_ghana_card_used(cls, ghana_card_id):
+        """Check if a Ghana Card ID has been used by any outgoing personnel"""
+        return cls.objects.filter(ghana_card_id=ghana_card_id).exists()
+    
+    @classmethod
+    def transfer_personnel(cls, nss_personnel, transfer_reason='evaluation_submitted'):
+        """Transfer an NSS personnel to the outgoing database"""
+        from datetime import datetime
+        
+        # Create outgoing personnel record
+        outgoing = cls.objects.create(
+            ghana_card_id=nss_personnel.ghana_card_record,
+            nss_id=nss_personnel.nss_id,
+            full_name=nss_personnel.full_name,
+            service_start_date=nss_personnel.start_date,
+            service_end_date=nss_personnel.end_date,
+            region_served=str(nss_personnel.region_of_posting),
+            department=nss_personnel.department,
+            institution_assigned=nss_personnel.assigned_institution,
+            supervisor_name=nss_personnel.assigned_supervisor.full_name if nss_personnel.assigned_supervisor else None,
+            performance_rating=nss_personnel.performance,
+            completion_year=datetime.now().year,
+            transfer_reason=transfer_reason
+        )
+        
+        # Delete from active NSS personnel
+        nss_personnel.delete()
+        
+        return outgoing
+    

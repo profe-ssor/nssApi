@@ -1,6 +1,6 @@
 from django.utils import timezone
 from .models import GhanaCardRecord, UniversityRecord, GhostDetection
-from nss_personnel.models import NSSPersonnel
+from nss_personnel.models import NSSPersonnel, ArchivedNSSPersonnel
 from nss_admin.models import Administrator
 from messageApp.models import Message
 from nss_supervisors.models import ActivityLog
@@ -103,6 +103,10 @@ def detect_ghost_personnel_during_submission(nss_personnel):
     
     if active_personnel.exists():
         ghost_flags.append("🚨 Multiple active personnel with same Ghana Card")
+    
+    # 5. Check for archived personnel
+    if ArchivedNSSPersonnel.objects.filter(ghana_card_record=nss_personnel.ghana_card_record).exists():
+        ghost_flags.append("🚩 Ghana Card ID found in archive (Completed Service) - submission blocked")
     
     return ghost_flags
 

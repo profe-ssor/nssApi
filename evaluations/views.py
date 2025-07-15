@@ -13,7 +13,7 @@ from .serializers import (
     DashboardStatsSerializer
 )
 from file_uploads.models import UploadPDF
-from nss_personnel.models import NSSPersonnel
+from nss_personnel.models import NSSPersonnel, ArchivedNSSPersonnel
 from nss_supervisors.views import log_evaluation_approval, log_evaluation_review_start
 from file_uploads.serializers import UploadPDFListSerializer
 from nss_supervisors.models import ActivityLog
@@ -542,16 +542,13 @@ def admin_evaluation_status_update(request, pk):
     user = request.user
     if getattr(user, 'user_type', None) != 'admin':
         return Response({'error': 'Only admins can update evaluation status'}, status=403)
-    
     # Only allow updates on evaluations where the admin is the supervisor
     evaluation = get_object_or_404(Evaluation, pk=pk, supervisor=user)
-
     serializer = EvaluationStatusUpdateSerializer(
         evaluation,
         data=request.data,
         partial=True
     )
-
     if serializer.is_valid():
         # Set reviewed_at timestamp for approved/rejected statuses
         if serializer.validated_data.get('status') in ['approved', 'rejected']:
@@ -563,6 +560,22 @@ def admin_evaluation_status_update(request, pk):
             log_evaluation_review_start(user, evaluation)
         else:
             log_evaluation_approval(user, evaluation)
+        # --- Archiving logic ---
+        personnel = evaluation.nss_personnel
+        if personnel:
+            # Count all evaluations submitted to this admin for this personnel
+            eval_count = Evaluation.objects.filter(supervisor=user, nss_personnel=personnel).count()
+            if eval_count >= 12:
+                # Archive only if not already archived
+                if not ArchivedNSSPersonnel.objects.filter(ghana_card_record=personnel.ghana_card_record).exists():
+                    ArchivedNSSPersonnel.objects.create(
+                        ghana_card_record=personnel.ghana_card_record,
+                        nss_id=personnel.nss_id,
+                        full_name=personnel.full_name,
+                        batch_year=personnel.start_date,  # Assuming start_date is batch year
+                        completion_date=personnel.end_date
+                    )
+                    personnel.delete()
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

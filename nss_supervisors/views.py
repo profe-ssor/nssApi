@@ -125,4 +125,13 @@ def supervisor_recent_activity(request):
     serializer = ActivityLogSerializer(activities, many=True)
     return Response(serializer.data)
 
+@api_view(['GET'])
+def get_supervisor_by_user_id(request, user_id):
+    try:
+        supervisor = Supervisor.objects.get(user_id=user_id)
+        serializer = SupervisorSerializer(supervisor)
+        return Response(serializer.data)
+    except Supervisor.DoesNotExist:
+        return Response({'error': 'Supervisor not found'}, status=404)
+
 

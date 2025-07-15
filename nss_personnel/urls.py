@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views import archived_personnel_list, restore_archived_personnel, recent_submissions, check_evaluation_assignments
 
 urlpatterns = [
    
@@ -34,6 +35,13 @@ urlpatterns = [
 
     path('performance_choices/', views.performance_choices, name='performance-choices'),
     path('personnel/<int:pk>/', views.get_personnel_detail),
+    path('personnel/by_user/<int:user_id>/', views.get_personnel_by_user),
+    path('personnel/<int:pk>/recent-submissions/', recent_submissions),
+    path('check-evaluation-assignments/', check_evaluation_assignments),
 
 # 
+]
+urlpatterns += [
+    path('archived/', archived_personnel_list, name='archived-personnel-list'),
+    path('archived/restore/<int:pk>/', restore_archived_personnel, name='restore-archived-personnel'),
 ]
