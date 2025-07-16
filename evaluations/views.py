@@ -622,3 +622,40 @@ def personnel_evaluation_list(request):
     combined.sort(key=lambda x: x.get('due_date') or x.get('uploaded_at') or '', reverse=True)
 
     return Response({'results': combined})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def personnel_approved_evaluations(request):
+    """
+    List all evaluations and signed/approved PDFs for the current personnel that have been signed and approved by a supervisor or admin.
+    """
+    if getattr(request.user, 'user_type', None) != 'nss':
+        return Response({'error': 'Only personnel can access this endpoint'}, status=403)
+
+    # Evaluations
+    eval_qs = Evaluation.objects.filter(
+        nss_personnel=request.user,
+        status='approved',
+        signed_pdf__isnull=False
+    ).order_by('-created_at')
+    eval_serialized = EvaluationListSerializer(eval_qs, many=True).data
+    for e in eval_serialized:
+        e['source'] = 'evaluation'
+
+    # UploadPDFs
+    from file_uploads.models import UploadPDF
+    from file_uploads.serializers import UploadPDFListSerializer
+    pdf_qs = UploadPDF.objects.filter(
+        user=request.user,
+        is_signed=True,
+        status='approved'
+    ).order_by('-uploaded_at')
+    pdf_serialized = UploadPDFListSerializer(pdf_qs, many=True).data
+    for p in pdf_serialized:
+        p['source'] = 'pdf'
+
+    # Combine and sort
+    combined = eval_serialized + pdf_serialized
+    combined.sort(key=lambda x: x.get('due_date') or x.get('uploaded_at') or '', reverse=True)
+
+    return Response({'results': combined})

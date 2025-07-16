@@ -57,6 +57,7 @@ def detect_ghost_personnel(personnel_id):
 def detect_ghost_personnel_during_submission(nss_personnel):
     """
     Comprehensive ghost detection using CharField ghana_card_record
+    Now more robust: ignores case and whitespace for name/contact checks.
     """
     ghost_flags = []
     
@@ -68,12 +69,16 @@ def detect_ghost_personnel_during_submission(nss_personnel):
     if not ghana_card_record:
         ghost_flags.append("❌ Ghana Card not found in official records")
     else:
-        # Check name consistency
-        if ghana_card_record.full_name.lower() != nss_personnel.full_name.lower():
+        # Check name consistency (ignore case and whitespace)
+        personnel_name = nss_personnel.full_name.strip().lower()
+        card_name = ghana_card_record.full_name.strip().lower()
+        if card_name != personnel_name:
             ghost_flags.append("⚠️ Name mismatch with Ghana Card records")
         
-        # Check other details
-        if ghana_card_record.contact_number != nss_personnel.phone:
+        # Check other details (ignore whitespace)
+        personnel_phone = (nss_personnel.phone or '').replace(' ', '')
+        card_phone = (ghana_card_record.contact_number or '').replace(' ', '')
+        if card_phone != personnel_phone:
             ghost_flags.append("⚠️ Contact number mismatch")
     
     # 2. Check University Records Database
@@ -84,8 +89,10 @@ def detect_ghost_personnel_during_submission(nss_personnel):
         
         if not university_record:
             ghost_flags.append("❌ No university record found")
-        elif university_record.full_name.lower() != nss_personnel.full_name.lower():
-            ghost_flags.append("⚠️ Name mismatch with university records")
+        else:
+            uni_name = university_record.full_name.strip().lower()
+            if uni_name != personnel_name:
+                ghost_flags.append("⚠️ Name mismatch with university records")
     
     # 3. Check for Duplicate NSS Personnel
     duplicate_nss = NSSPersonnel.objects.filter(
