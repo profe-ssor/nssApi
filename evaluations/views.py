@@ -18,6 +18,8 @@ from nss_supervisors.views import log_evaluation_approval, log_evaluation_review
 from file_uploads.serializers import UploadPDFListSerializer
 from nss_supervisors.models import ActivityLog
 from nss_supervisors.serializers import ActivityLogSerializer
+from nss_personnel.models import NSSPersonnel
+from nss_supervisors.models import Supervisor
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -31,6 +33,13 @@ def supervisor_evaluation_list(request):
             {'error': 'Only supervisors can access this endpoint'}, 
             status=status.HTTP_403_FORBIDDEN
         )
+    
+    # DEBUG: Log supervisor user id and email
+    from file_uploads.models import UploadPDF
+    print(f"[DEBUG] Supervisor user id: {request.user.id}, email: {request.user.email}")
+    pdfs = UploadPDF.objects.filter(is_signed=True, form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project'])
+    for pdf in pdfs:
+        print(f"[DEBUG] PDF id: {pdf.id}, receiver_id: {pdf.receiver_id}, status: {pdf.status}, file_name: {pdf.file_name}")
     
     # --- Evaluation model ---
     # Only show evaluations where the supervisor is the supervisor
@@ -50,9 +59,9 @@ def supervisor_evaluation_list(request):
         eval_qs = eval_qs.filter(priority=priority_filter)
 
     # --- UploadPDF model ---
-    # Only show PDF forms where the supervisor is the receiver
+    # Only show PDF forms where the supervisor is the receiver (match by user id)
     pdf_qs = UploadPDF.objects.filter(
-        receiver=request.user, 
+        receiver_id=request.user.id, 
         is_signed=True, 
         form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project']
     )
@@ -400,22 +409,16 @@ def admin_dashboard_stats(request):
     user = request.user
     if getattr(user, 'user_type', None) != 'admin':
         return Response({'error': 'Only admins can access this endpoint'}, status=403)
-    
     # --- Evaluation model ---
-    # Only count evaluations where the admin is the supervisor
     evaluations = Evaluation.objects.filter(supervisor=user)
-    
     # --- UploadPDF model ---
-    # Only count PDF forms where the admin is the receiver
     pdf_forms = UploadPDF.objects.filter(
         receiver=user, 
         is_signed=True,
         form_type__in=['Monthly', 'Quarterly', 'Annual', 'Project']
     )
-
     now = timezone.now()
     today = now.date()
-
     eval_total_submissions = evaluations.count()
     eval_total_pending = evaluations.filter(status='pending').count()
     eval_approved = evaluations.filter(status='approved').count()
@@ -429,7 +432,6 @@ def admin_dashboard_stats(request):
         status__in=['approved', 'rejected'],
         reviewed_at__date=today
     ).count()
-
     pdf_total_submissions = pdf_forms.count()
     pdf_total_pending = pdf_forms.filter(status='pending').count()
     pdf_approved = pdf_forms.filter(status='approved').count()
@@ -443,14 +445,16 @@ def admin_dashboard_stats(request):
         status__in=['approved', 'rejected'],
         submitted_date__date=today
     ).count()
-
+    # Real counts for personnel and supervisors
+    active_personnel_count = NSSPersonnel.objects.filter(status='active').count()
+    active_supervisors_count = Supervisor.objects.count()
     stats = {
         'totalSubmissions': eval_total_submissions + pdf_total_submissions,
         'pendingReviews': eval_total_pending + pdf_total_pending,
         'approvedSubmissions': eval_approved + pdf_approved,
         'rejectedSubmissions': eval_rejected + pdf_rejected,
-        'totalPersonnel': 0,  # Not relevant in this restrictive view
-        'activeSupervisors': 0,  # Not relevant in this restrictive view
+        'totalPersonnel': active_personnel_count,
+        'activeSupervisors': active_supervisors_count,
         'completedToday': eval_completed_today + pdf_completed_today
     }
     return Response(stats)
@@ -563,10 +567,12 @@ def admin_evaluation_status_update(request, pk):
         # --- Archiving logic ---
         personnel = evaluation.nss_personnel
         if personnel:
-            # Count all evaluations submitted to this admin for this personnel
+            # Count all Evaluation and UploadPDF submissions to this admin
             eval_count = Evaluation.objects.filter(supervisor=user, nss_personnel=personnel).count()
-            if eval_count >= 12:
-                # Archive only if not already archived
+            pdf_count = UploadPDF.objects.filter(receiver=user, user=personnel.pk).count()
+            total_submissions = eval_count + pdf_count
+            print(f"[DEBUG] Personnel {personnel.full_name} (ID: {personnel.id}, PK: {personnel.pk}) has {eval_count} evaluations and {pdf_count} PDFs submitted to admin {user.email} (user ID: {user.id}). Total: {total_submissions}")
+            if total_submissions >= 12:
                 if not ArchivedNSSPersonnel.objects.filter(ghana_card_record=personnel.ghana_card_record).exists():
                     ArchivedNSSPersonnel.objects.create(
                         ghana_card_record=personnel.ghana_card_record,
@@ -575,6 +581,7 @@ def admin_evaluation_status_update(request, pk):
                         batch_year=personnel.start_date,  # Assuming start_date is batch year
                         completion_date=personnel.end_date
                     )
+                    print(f"[DEBUG] Archiving and deleting personnel {personnel.full_name} (ID: {personnel.id})")
                     personnel.delete()
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -628,6 +635,7 @@ def personnel_evaluation_list(request):
 def personnel_approved_evaluations(request):
     """
     List all evaluations and signed/approved PDFs for the current personnel that have been signed and approved by a supervisor or admin.
+    Now filters UploadPDFs to only those approved by the assigned supervisor.
     """
     if getattr(request.user, 'user_type', None) != 'nss':
         return Response({'error': 'Only personnel can access this endpoint'}, status=403)
@@ -642,14 +650,19 @@ def personnel_approved_evaluations(request):
     for e in eval_serialized:
         e['source'] = 'evaluation'
 
-    # UploadPDFs
-    from file_uploads.models import UploadPDF
-    from file_uploads.serializers import UploadPDFListSerializer
+    # UploadPDFs - filter by assigned supervisor
+    try:
+        personnel = NSSPersonnel.objects.get(user=request.user)
+        supervisor = personnel.assigned_supervisor
+        supervisor_user = supervisor.user if supervisor else None
+    except NSSPersonnel.DoesNotExist:
+        supervisor_user = None
     pdf_qs = UploadPDF.objects.filter(
         user=request.user,
         is_signed=True,
-        status='approved'
-    ).order_by('-uploaded_at')
+        status='approved',
+        receiver=supervisor_user
+    ).order_by('-uploaded_at') if supervisor_user else UploadPDF.objects.none()
     pdf_serialized = UploadPDFListSerializer(pdf_qs, many=True).data
     for p in pdf_serialized:
         p['source'] = 'pdf'

@@ -349,13 +349,138 @@ def sign_with_image(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def sign_with_image_nss(request, pk):
+    """Sign a PDF as NSS personnel (with uploaded file)"""
+    if request.user.user_type != 'nss':
+        return Response({'error': 'Only NSS personnel can sign here.'}, status=403)
+    try:
+        pdf = UploadPDF.objects.get(pk=pk)
+        if not (pdf.user == request.user or pdf.receiver == request.user):
+            return Response({"error": "PDF not found"}, status=404)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "PDF not found"}, status=404)
+
+    signature_file = request.FILES.get('signature')
+    if not signature_file:
+        return Response({"error": "Signature file is required"}, status=400)
+
+    position_str = request.data.get('position')
+    position = None
+    if position_str:
+        try:
+            position = json.loads(position_str)
+        except json.JSONDecodeError:
+            pass
+    try:
+        signature_bytes = signature_file.read()
+        success, error = apply_signature(pdf, signature_bytes, position)
+        if not success:
+            return Response({"error": error}, status=500)
+        # Print log for NSS
+        print(f"[SIGNATURE LOG] NSS personnel {request.user.get_full_name()} (ID: {request.user.id}) signed PDF {pdf.id} at {timezone.now()} [user_type: nss]")
+        serializer = UploadPDFSerializer(pdf)
+        return Response({
+            "message": "PDF signed by NSS personnel successfully!",
+            "data": serializer.data
+        }, status=200)
+    except Exception as e:
+        return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def sign_with_image_supervisor(request, pk):
+    """Sign a PDF as Supervisor (with uploaded file)"""
+    if request.user.user_type != 'supervisor':
+        return Response({'error': 'Only supervisors can sign here.'}, status=403)
+    try:
+        pdf = UploadPDF.objects.get(pk=pk)
+        if not (pdf.user == request.user or pdf.receiver == request.user):
+            return Response({"error": "PDF not found"}, status=404)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "PDF not found"}, status=404)
+
+    signature_file = request.FILES.get('signature')
+    if not signature_file:
+        return Response({"error": "Signature file is required"}, status=400)
+
+    position_str = request.data.get('position')
+    position = None
+    if position_str:
+        try:
+            position = json.loads(position_str)
+        except json.JSONDecodeError:
+            pass
+    try:
+        signature_bytes = signature_file.read()
+        success, error = apply_signature(pdf, signature_bytes, position)
+        if not success:
+            return Response({"error": error}, status=500)
+        # Supervisor logging
+        log_supervisor_activity(request.user, 'signature', f'Signed PDF {pdf.id}', f'Supervisor {request.user.get_full_name()} signed PDF {pdf.id}', pdf.user.get_full_name() if pdf.user else None)
+        print(f"[SIGNATURE LOG] Supervisor {request.user.get_full_name()} (ID: {request.user.id}) signed PDF {pdf.id} at {timezone.now()} [user_type: supervisor]")
+        serializer = UploadPDFSerializer(pdf)
+        return Response({
+            "message": "PDF signed by Supervisor successfully!",
+            "data": serializer.data
+        }, status=200)
+    except Exception as e:
+        return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def sign_with_image_admin(request, pk):
+    """Sign a PDF as Admin (with uploaded file)"""
+    if request.user.user_type != 'admin':
+        return Response({'error': 'Only admins can sign here.'}, status=403)
+    try:
+        pdf = UploadPDF.objects.get(pk=pk)
+        if not (pdf.user == request.user or pdf.receiver == request.user):
+            return Response({"error": "PDF not found"}, status=404)
+    except UploadPDF.DoesNotExist:
+        return Response({"error": "PDF not found"}, status=404)
+
+    signature_file = request.FILES.get('signature')
+    if not signature_file:
+        return Response({"error": "Signature file is required"}, status=400)
+
+    position_str = request.data.get('position')
+    position = None
+    if position_str:
+        try:
+            position = json.loads(position_str)
+        except json.JSONDecodeError:
+            pass
+    try:
+        signature_bytes = signature_file.read()
+        success, error = apply_signature(pdf, signature_bytes, position)
+        if not success:
+            return Response({"error": error}, status=500)
+        # Print log for Admin
+        print(f"[SIGNATURE LOG] Admin {request.user.get_full_name()} (ID: {request.user.id}) signed PDF {pdf.id} at {timezone.now()} [user_type: admin]")
+        serializer = UploadPDFSerializer(pdf)
+        return Response({
+            "message": "PDF signed by Admin successfully!",
+            "data": serializer.data
+        }, status=200)
+    except Exception as e:
+        return Response({"error": f"Invalid signature data: {str(e)}"}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def send_evaluation_form(request):
     """Upload PDF with evaluation form type, priority, receiver, and auto-set due date"""
+    print(f"[DEBUG] Submission by user: {request.user.id}, {request.user.get_full_name()}, {request.user.email}")
     pdf_file = request.FILES.get('file') or request.FILES.get('pdf')  # Accept both 'file' and 'pdf'
     form_type = request.data.get('form_type', 'Monthly')
     priority = request.data.get('priority', 'medium')
     receiver_id = request.data.get('receiver_id')
     file_path = request.data.get('file_path')
+
+    # Log the incoming payload for debugging
+    print(f"[DEBUG] Incoming payload: form_type={form_type}, priority={priority}, receiver_id={receiver_id}, file_path={file_path}, request.data={dict(request.data)}")
 
     if form_type not in dict(UploadPDF.FORM_TYPE_CHOICES):
         return Response({"error": "Invalid form type."}, status=400)
@@ -368,8 +493,13 @@ def send_evaluation_form(request):
     if receiver_id:
         try:
             receiver = MyUser.objects.get(pk=receiver_id)
+            print(f"[DEBUG] Resolved receiver: {receiver_id} -> {receiver.email}")
         except MyUser.DoesNotExist:
+            print(f"[DEBUG] Receiver not found for id: {receiver_id}")
             return Response({"error": "Receiver not found."}, status=404)
+    else:
+        receiver = None
+        print(f"[DEBUG] No receiver_id provided in request.")
 
     # 🔍 GHOST DETECTION: Run security check if receiver is an admin
     if receiver and receiver.user_type == 'admin':
@@ -651,6 +781,9 @@ def update_evaluation_status(request, pk):
         return Response({"error": "Invalid status."}, status=400)
 
     pdf.status = status_value
+    if status_value in ['approved', 'rejected']:
+        from django.utils import timezone
+        pdf.reviewed_at = timezone.now()
     pdf.save()
 
     # Log the activity for evaluation status update
@@ -685,7 +818,42 @@ def admin_update_pdf_status(request, pk):
         return Response({'error': 'Invalid status.'}, status=400)
 
     pdf.status = status_value
+    if status_value in ['approved', 'rejected']:
+        from django.utils import timezone
+        pdf.reviewed_at = timezone.now()
     pdf.save()
+
+    # Debug: print current admin and personnel info
+    print(f"[DEBUG] [PDF] Current admin user: {user.email} (ID: {user.id})")
+    print(f"[DEBUG] [PDF] Personnel user ID: {pdf.user.id}, Personnel PK: {pdf.user.pk}")
+    # Print all receiver/user IDs for this personnel's PDFs
+    pdfs = UploadPDF.objects.filter(user=pdf.user)
+    print(f"[DEBUG] [PDF] All receiver IDs for this personnel's PDFs: {[p.receiver_id for p in pdfs]}")
+    # Archiving logic: count all Evaluation and UploadPDF submissions to this admin
+    try:
+        from nss_personnel.models import NSSPersonnel, ArchivedNSSPersonnel
+        from evaluations.models import Evaluation
+        eval_count = Evaluation.objects.filter(supervisor=user, nss_personnel=pdf.user).count()
+        pdf_count = UploadPDF.objects.filter(receiver=user, user=pdf.user.pk).count()
+        total_submissions = eval_count + pdf_count
+        print(f"[DEBUG] [PDF] Personnel {pdf.user.get_full_name()} (ID: {pdf.user.id}, PK: {pdf.user.pk}) has {eval_count} evaluations and {pdf_count} PDFs submitted to admin {user.email} (user ID: {user.id}). Total: {total_submissions}")
+        if total_submissions >= 12:
+            try:
+                personnel = NSSPersonnel.objects.get(user=pdf.user)
+                if not ArchivedNSSPersonnel.objects.filter(ghana_card_record=personnel.ghana_card_record).exists():
+                    ArchivedNSSPersonnel.objects.create(
+                        ghana_card_record=personnel.ghana_card_record,
+                        nss_id=personnel.nss_id,
+                        full_name=personnel.full_name,
+                        batch_year=personnel.start_date,  # Assuming start_date is batch year
+                        completion_date=personnel.end_date
+                    )
+                    print(f"[DEBUG] [PDF] Archiving and deleting personnel {personnel.full_name} (ID: {personnel.id})")
+                    personnel.delete()
+            except NSSPersonnel.DoesNotExist:
+                print(f"[DEBUG] [PDF] NSSPersonnel for user {pdf.user.id} does not exist. Skipping archiving.")
+    except Exception as e:
+        print(f"[DEBUG] [PDF] Archiving logic error: {e}")
 
     # Log the activity for evaluation status update
     action = 'approval' if status_value in ['approved', 'rejected'] else 'submission'

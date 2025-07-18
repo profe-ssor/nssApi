@@ -66,6 +66,7 @@ class ArchivedNSSPersonnel(models.Model):
     batch_year = models.CharField(max_length=10)
     completion_date = models.CharField(max_length=10)
     archived_at = models.DateTimeField(auto_now_add=True)
+    restored_once = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.full_name} ({self.nss_id}) - Archived"

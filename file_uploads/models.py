@@ -27,6 +27,7 @@ class UploadPDF(models.Model):
     
     submitted_date = models.DateTimeField(null=True, blank=True)
     due_date = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     
     file_name = models.CharField(max_length=255, default="Untitled")
     file = models.FileField(upload_to='documents/')

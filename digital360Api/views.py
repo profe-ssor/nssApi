@@ -884,11 +884,28 @@ def test_ghost_detection(request):
         # Run ghost detection
         ghost_result = detect_ghost_personnel(personnel_id)
         print(f"[DEBUG] Ghost detection result: {ghost_result}")
+
+        personnel = ghost_result.get('personnel_obj')  # Save before popping
+        ghost_result.pop('personnel_obj', None)
+        
+        if ghost_result is None:
+            print("[ERROR] Ghost detection returned None.")
+            return Response({
+                'status': 'error',
+                'message': 'Ghost detection failed or personnel not found.',
+                'details': None
+            }, status=400)
         
         if ghost_result['is_ghost']:
             # Create a GhostDetection record
             try:
-                personnel = NSSPersonnel.objects.get(id=personnel_id)
+                if not personnel:
+                    print("[ERROR] No personnel object found in ghost_result.")
+                    return Response({
+                        'status': 'error',
+                        'message': 'Personnel object missing in ghost detection result.',
+                        'details': ghost_result
+                    }, status=400)
                 supervisor = personnel.assigned_supervisor
                 # Use the first admin as assigned_admin (or None if not available)
                 from nss_admin.models import Administrator

@@ -7,12 +7,14 @@ from nss_supervisors.models import ActivityLog
 
 def detect_ghost_personnel(personnel_id):
     """
-    Detect ghost personnel by personnel ID
+    Detect ghost personnel by personnel ID or user ID
     Returns a dictionary with detection results
     """
+    print(f"[DEBUG] detect_ghost_personnel called with personnel_id: {personnel_id} (type: {type(personnel_id)})")
     try:
-        # Get the personnel
+        # Try by NSSPersonnel.id first
         personnel = NSSPersonnel.objects.get(id=personnel_id)
+        print(f"[DEBUG] Found personnel by id: {personnel}")
         
         # Run ghost detection
         ghost_flags = detect_ghost_personnel_during_submission(personnel)
@@ -30,20 +32,43 @@ def detect_ghost_personnel(personnel_id):
             'ghana_card_number': personnel.ghana_card_record,
             'flags': ghost_flags,
             'severity': severity,
-            'reason': '; '.join(ghost_flags) if ghost_flags else 'No issues detected'
+            'reason': '; '.join(ghost_flags) if ghost_flags else 'No issues detected',
+            'personnel_obj': personnel
         }
         
     except NSSPersonnel.DoesNotExist:
-        return {
-            'is_ghost': True,
-            'personnel_id': personnel_id,
-            'personnel_name': 'Unknown',
-            'ghana_card_number': '',
-            'flags': ['❌ Personnel not found in NSS database'],
-            'severity': 'critical',
-            'reason': 'Personnel not found in NSS database'
-        }
+        print(f"[DEBUG] No personnel found by id: {personnel_id}, trying user_id...")
+        try:
+            # Try by user_id if not found by id
+            personnel = NSSPersonnel.objects.get(user_id=personnel_id)
+            print(f"[DEBUG] Found personnel by user_id: {personnel}")
+            # Run ghost detection
+            ghost_flags = detect_ghost_personnel_during_submission(personnel)
+            is_ghost = len(ghost_flags) > 0
+            severity = calculate_severity(ghost_flags)
+            return {
+                'is_ghost': is_ghost,
+                'personnel_id': personnel_id,
+                'personnel_name': personnel.full_name,
+                'ghana_card_number': personnel.ghana_card_record,
+                'flags': ghost_flags,
+                'severity': severity,
+                'reason': '; '.join(ghost_flags) if ghost_flags else 'No issues detected',
+                'personnel_obj': personnel
+            }
+        except NSSPersonnel.DoesNotExist:
+            print(f"[DEBUG] No personnel found by user_id: {personnel_id}")
+            return {
+                'is_ghost': True,
+                'personnel_id': personnel_id,
+                'personnel_name': 'Unknown',
+                'ghana_card_number': '',
+                'flags': ['❌ Personnel not found in NSS database'],
+                'severity': 'critical',
+                'reason': 'Personnel not found in NSS database'
+            }
     except Exception as e:
+        print(f"[ERROR] Exception in detect_ghost_personnel: {e}")
         return {
             'is_ghost': False,
             'personnel_id': personnel_id,

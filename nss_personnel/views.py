@@ -25,6 +25,7 @@ from nss_supervisors.views import log_personnel_assignment
 from datetime import datetime
 from evaluations.models import Evaluation
 from file_uploads.models import UploadPDF
+from django.utils.crypto import get_random_string
 
 # Enpoint for savin NssPersonel Database
 
@@ -196,7 +197,7 @@ def grouped_by_supervisor(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def nss_grouped_by_admin(request):
-    admins = Administrator.objects.prefetch_related('assigned_supervisors__nsspersonnel_set')
+    admins = Administrator.objects.prefetch_related('assigned_supervisors__nss_personnel')
     data = []
 
     for admin in admins:
@@ -206,7 +207,7 @@ def nss_grouped_by_admin(request):
             'supervisors': []
         }
         for supervisor in admin.assigned_supervisors.all():
-            nss_personnel = supervisor.nsspersonnel_set.all()
+            nss_personnel = supervisor.nss_personnel.all()
             personnel_data = NSSPersonnelSerializer(nss_personnel, many=True).data
             admin_group['supervisors'].append({
                 'supervisor_id': supervisor.id,
@@ -447,22 +448,42 @@ def restore_archived_personnel(request, pk):
     try:
         archived = ArchivedNSSPersonnel.objects.get(pk=pk)
     except ArchivedNSSPersonnel.DoesNotExist:
-        return Response({'error': 'Archived personnel not found'}, status=404)
-    # Restore to NSSPersonnel
+        return Response({'error': 'Archived personnel not found.'}, status=404)
+
+    if archived.restored_once:
+        return Response({'error': 'Restoration limit reached. This personnel has already been restored once.'}, status=400)
+
+    # Always create a new user for the restored personnel
+    base_email = f"{archived.nss_id.lower()}@restored.nss"
+    email = base_email
+    while MyUser.objects.filter(email=email).exists():
+        email = f"{archived.nss_id.lower()}_{get_random_string(4)}@restored.nss"
+
+    user = MyUser.objects.create(
+        email=email,
+        username=archived.nss_id.lower(),
+        first_name=archived.full_name.split()[0],
+        last_name=" ".join(archived.full_name.split()[1:]) if len(archived.full_name.split()) > 1 else "",
+        user_type='nss',
+    )
+    user.set_password(get_random_string(10))
+    user.save()
+
     personnel = NSSPersonnel.objects.create(
         ghana_card_record=archived.ghana_card_record,
         nss_id=archived.nss_id,
         full_name=archived.full_name,
         start_date=archived.batch_year,
         end_date=archived.completion_date,
-        phone='',  # Set as needed
+        phone=request.data.get('phone', ''),
         status='active',
-        assigned_institution='',  # Set as needed
-        department='education',  # Set as needed
-        region_of_posting_id=1,  # Set as needed or update logic
-        user_id=None,  # Set as needed or update logic
+        assigned_institution='',
+        department=request.data.get('department', 'education'),
+        region_of_posting_id=request.data.get('region_of_posting_id', 1),
+        user=user,
     )
-    archived.delete()
+    archived.restored_once = True
+    archived.save()
     return Response({'message': 'Personnel restored successfully'})
 
 @api_view(['GET'])
@@ -597,3 +618,23 @@ def check_evaluation_assignments(request):
     }
     
     return Response(response_data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_admins(request):
+    """
+    Return all admins assigned to the current user's supervisor.
+    """
+    try:
+        nss_personnel = NSSPersonnel.objects.get(user=request.user)
+        supervisor = nss_personnel.assigned_supervisor
+        if not supervisor:
+            return Response({'error': 'No supervisor assigned to you'}, status=status.HTTP_404_NOT_FOUND)
+        # Find all admins who have this supervisor assigned
+        from nss_admin.models import Administrator
+        admins = Administrator.objects.filter(assigned_supervisors=supervisor)
+        from nss_admin.serializers import AdministratorSerializer
+        serializer = AdministratorSerializer(admins, many=True)
+        return Response(serializer.data)
+    except NSSPersonnel.DoesNotExist:
+        return Response({'error': 'NSS personnel not found'}, status=status.HTTP_404_NOT_FOUND)

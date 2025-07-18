@@ -13,6 +13,7 @@ urlpatterns = [
 
     path('my-supervisor/', views.get_my_supervisor, name='get-my-supervisor'),
     path('my-admin/', views.get_my_admin, name='get-my-admin'),
+    path('my-admins/', views.my_admins, name='my-admins'),
 
 
     path('admin/update-nss/<int:nss_id>/', views.admin_update_nss),
