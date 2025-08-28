@@ -1,7 +1,10 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from digital360Api.models import Region, Administrator, Supervisor, GhanaCardRecord
+
+from digital360Api.models import Region, GhanaCardRecord
+from nss_admin.models import Administrator
+from nss_supervisors.models import Supervisor
 
 class Command(BaseCommand):
     help = 'Create an Administrator or Supervisor user'
@@ -83,7 +86,7 @@ class Command(BaseCommand):
                 if user_type == "admin":
                     Administrator.objects.create(
                         user=user,
-                        name=full_name,
+                        full_name=full_name,
                         ghana_card_record=ghana_card_record,
                         contact=contact,
                    

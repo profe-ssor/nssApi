@@ -34,16 +34,16 @@ def NssPersonelDatabase(request):
     data = request.data
     user_id = data.get('user_id') 
 
-    # Year validation
-    start_date = data.get('start_date')
-    if start_date:
+    # Year validation now based on end_date instead of start_date
+    end_date = data.get('end_date')
+    if end_date:
         try:
-            batch_year = int(start_date[:4])
+            batch_year = int(end_date[:4])
             current_year = datetime.now().year
             if batch_year != current_year:
                 return Response({'error': f'Batch year must be {current_year}. You entered {batch_year}.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
-            return Response({'error': 'Invalid start_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid end_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         user = MyUser.objects.get(id=user_id) 
@@ -312,16 +312,16 @@ def create_personnel(request):
     """
     data = request.data.copy()
 
-    # Year validation
-    start_date = data.get('start_date')
-    if start_date:
+    # Year validation now based on end_date instead of start_date
+    end_date = data.get('end_date')
+    if end_date:
         try:
-            batch_year = int(start_date[:4])
+            batch_year = int(end_date[:4])
             current_year = datetime.now().year
             if batch_year != current_year:
                 return Response({'error': f'Batch year must be {current_year}. You entered {batch_year}.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
-            return Response({'error': 'Invalid start_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid end_date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     serializer = NSSPersonnelSerializer(data=data)
     if serializer.is_valid():
