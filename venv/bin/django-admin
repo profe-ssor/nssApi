@@ -1,4 +1,4 @@
-#!/home/professor/Desktop/nssApi/venv/bin/python3
+#!/home/professor/Desktop/Nasco-Project/nssApi/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
