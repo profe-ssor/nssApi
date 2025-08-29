@@ -14,7 +14,7 @@ load_dotenv(dotenv_path)
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 DEBUG = os.environ.get("DEBUG", "False") == "True"
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split(" ")
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split(",")
 # ALLOWED_HOSTS = ['*']  # Not recommended for production
 
 
@@ -80,13 +80,16 @@ ROOT_URLCONF = 'nssApi.urls'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://cohort3-alpha.vercel.app"
+    "https://cohort3-alpha.vercel.app",
+    "https://nssapi.onrender.com"
 ]
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
+    "https://cohort3-alpha.vercel.app",
+    "https://nssapi.onrender.com", 
 ]
 
 
