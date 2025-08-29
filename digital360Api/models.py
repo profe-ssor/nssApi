@@ -82,7 +82,7 @@ class Region(models.Model):
 # Ghana Card Record Model
 # ===============================
 class GhanaCardRecord(models.Model):
-    ghana_card_number = models.CharField(max_length=20, unique=True)
+    ghana_card_number = models.CharField(max_length=100, unique=True)
     full_name = models.CharField(max_length=255)
     gender = models.CharField(max_length=10, choices=[('M', 'Male'), ('F', 'Female')])
     date_of_birth = models.DateField()
@@ -181,7 +181,7 @@ class OutgoingNSSPersonnel(models.Model):
     Database to store outgoing NSS personnel who have completed their service.
     This prevents duplicate Ghana Card submissions for new batches.
     """
-    ghana_card_id = models.CharField(max_length=20, unique=True, help_text="Ghana Card ID to prevent duplicates")
+    ghana_card_id = models.CharField(max_length=100, unique=True, help_text="Ghana Card ID to prevent duplicates")
     nss_id = models.CharField(max_length=25, help_text="Original NSS ID")
     full_name = models.CharField(max_length=255, help_text="Full name of personnel")
     service_start_date = models.CharField(max_length=10, help_text="When service started")

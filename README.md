@@ -56,7 +56,7 @@ User = get_user_model()
 u = User.objects.get(email="kyerematengcollins93@gmail.com")
 u.is_superuser = True
 u.is_staff = True
-u.is_active = TruePROFESSOR
+u.is_active = True
 
 u.save()
 
