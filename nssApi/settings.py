@@ -15,6 +15,9 @@ load_dotenv(dotenv_path)
 SECRET_KEY = os.environ.get("SECRET_KEY")
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split(",")
+
+# Frontend URL for email verification links
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:4200")
 # ALLOWED_HOSTS = ['*']  # Not recommended for production
 
 

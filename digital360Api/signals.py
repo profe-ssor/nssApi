@@ -41,7 +41,7 @@ def update_user_role_and_create_otp(sender, instance, created, **kwargs):
                     subject="Email Verification",
                     message=f"Hi {instance.username}, here is your OTP {otp_code} \n"
                             f"it expires in 5 minutes, use the url below to redirect back to the website \n"
-                            f"http://127.0.0.1:8000/verify-email/{instance.username}",
+                            f"{settings.FRONTEND_URL}/verify-email/{instance.username}",
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[instance.email],
                     fail_silently=False,
