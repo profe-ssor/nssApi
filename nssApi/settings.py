@@ -10,20 +10,14 @@ dotenv_path = BASE_DIR / '.env'
 print(f"Looking for .env at: {dotenv_path.absolute()}")
 load_dotenv(dotenv_path)
 
-
-
 SECRET_KEY = os.environ.get("SECRET_KEY")
 DEBUG = os.environ.get("DEBUG", "False") == "True"
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split(",")
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,nssapi.onrender.com").split(",")
 
 # Frontend URL for email verification links
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:4200")
-# ALLOWED_HOSTS = ['*']  # Not recommended for production
-
-
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nss-dems.vercel.app")
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -60,6 +54,7 @@ REST_FRAMEWORK = {
        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
+
 SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
@@ -80,21 +75,53 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'digital360Api.MyUser'
 ROOT_URLCONF = 'nssApi.urls'
+
+# CORS Configuration - Fixed for production
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://nss-dems.vercel.app",
+    "https://nss-dems.vercel.app",  # Fixed: removed /login path
     "https://nssapi.onrender.com"
 ]
+
+# Allow all subdomains of vercel.app for preview deployments (optional)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://nss-dems-.*\.vercel\.app$",  # This allows preview deployments
+]
+
 CORS_ALLOW_CREDENTIALS = True
+
+# Additional CORS settings for better compatibility
+CORS_ALLOW_ALL_ORIGINS = False  # Keep this False for security
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://nss-dems.vercel.app",
-    "https://nssapi.onrender.com", 
+    "https://nss-dems.vercel.app",  # Fixed: removed /login path
+    "https://nssapi.onrender.com",
 ]
 
+# Security settings for production
+if not DEBUG:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 TEMPLATES = [
     {
@@ -114,41 +141,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'nssApi.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'ghost',  # Your PostgreSQL database name
-#         'USER': 'postgres',  # Your PostgreSQL username
-#         'PASSWORD': '!@Password12345',  # Your PostgreSQL password
-#         'HOST': 'localhost',  # If running locally
-#         'PORT': '5432',  # Default PostgreSQL port
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / "db.sqlite3",
-    }
-}
-
+# Database Configuration
 DATABASES = {
     'default': dj_database_url.parse(os.environ.get("DATABASE_URL"))
 }
 
-
+# Static files configuration
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-# Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
+# Media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -164,36 +172,14 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
-STATIC_URL = 'static/'
-
-
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_URL = '/media/'
-
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-import os
-
+# Email Configuration
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.getenv('EMAIL_HOST')  # smtp.gmail.com
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 465))  # 465
@@ -202,5 +188,3 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # App password
 EMAIL_USE_TLS = False  # Must be False when using SSL
 EMAIL_USE_SSL = True  # True for port 465
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
-
-
