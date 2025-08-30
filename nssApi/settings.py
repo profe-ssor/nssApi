@@ -79,7 +79,7 @@ ROOT_URLCONF = 'nssApi.urls'
 # CORS Configuration - Fixed for production
 CORS_ALLOWED_ORIGINS = [
     "https://nss-dems.vercel.app",  # Fixed: removed /login path
-    "https://nssapi.onrender.com"
+    "https://nssapi.onrender.com",  # Added missing comma here
     "http://localhost:4200",
     "http://127.0.0.1:4200",
 ]
