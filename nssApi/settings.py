@@ -78,10 +78,10 @@ ROOT_URLCONF = 'nssApi.urls'
 
 # CORS Configuration - Fixed for production
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",
-    "http://127.0.0.1:4200",
     "https://nss-dems.vercel.app",  # Fixed: removed /login path
     "https://nssapi.onrender.com"
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
 ]
 
 # Allow all subdomains of vercel.app for preview deployments (optional)
