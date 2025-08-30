@@ -80,7 +80,7 @@ ROOT_URLCONF = 'nssApi.urls'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://cohort3-alpha.vercel.app",
+    "https://nss-dems.vercel.app/login",
     "https://nssapi.onrender.com"
 ]
 CORS_ALLOW_CREDENTIALS = True
@@ -88,7 +88,7 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "https://cohort3-alpha.vercel.app",
+    "https://nss-dems.vercel.app/login",
     "https://nssapi.onrender.com", 
 ]
 
