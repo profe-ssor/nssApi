@@ -93,23 +93,43 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Additional CORS settings for better compatibility
 CORS_ALLOW_ALL_ORIGINS = False  # Keep this False for security
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = True  # For development, consider restricting in production
+CORS_ALLOW_CREDENTIALS = True
+
+# Allowed origins for CSRF and CORS
+ALLOWED_ORIGINS = [
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+    "https://nss-dems.vercel.app",
+    "https://nssapi.onrender.com",
+]
+CORS_ALLOWED_ORIGINS = ALLOWED_ORIGINS
+CSRF_TRUSTED_ORIGINS = [origin.replace('http://', 'https://') for origin in ALLOWED_ORIGINS]
+
+# CORS headers
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
     'authorization',
+    'content-disposition',
     'content-type',
     'dnt',
     'origin',
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'range',
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:4200",
-    "http://127.0.0.1:4200",
-    "https://nss-dems.vercel.app",  # Fixed: removed /login path
-    "https://nssapi.onrender.com",
+# Allow credentials and specific methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
 # Security settings for production
