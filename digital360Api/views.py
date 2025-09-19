@@ -487,11 +487,17 @@ def get_unassigned_nss(request):
         return Response({'error': 'Access denied. Admin privileges required.'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
-        # 👇 Fix here: use 'assigned_supervisor' not 'supervisor'
-    unassigned_nss = NSSPersonnel.objects.filter(assigned_supervisor=None)
-    serializer = NSSPersonnelSerializer(unassigned_nss, many=True)
-    
-    return Response(serializer.data)
+    try:
+        from nss_personnel.models import NSSPersonnel
+        from nss_personnel.serializer import NSSPersonnelSerializer
+        
+        # Get all NSS personnel without an assigned supervisor
+        unassigned_nss = NSSPersonnel.objects.filter(assigned_supervisor__isnull=True)
+        serializer = NSSPersonnelSerializer(unassigned_nss, many=True)
+        
+        return Response(serializer.data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # assign supervisors to an admin
 
