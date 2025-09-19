@@ -3,6 +3,7 @@ import secrets
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 
 # ===============================
 # Custom User Model (MyUser)
@@ -175,6 +176,8 @@ class GhostDetection(models.Model):
     def __str__(self):
         return f"Ghost Detection: {self.nss_personnel.full_name} - {self.severity}"
     
+
+# Administrator model has been moved to nss_admin app to avoid conflicts
 
 class OutgoingNSSPersonnel(models.Model):
     """

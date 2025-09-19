@@ -390,8 +390,29 @@ def user_counts(request):
 
 # Helper function to check if user is admin or superuser
 def is_admin(user):
-    from .models import Administrator
-    return user.is_authenticated and (user.is_superuser or Administrator.objects.filter(user=user).exists())
+    """
+    Check if the user is an admin by:
+    1. Checking if they are a superuser
+    2. Checking if they have admin user_type
+    3. Checking if they have an Administrator profile in nss_admin
+    """
+    if not user.is_authenticated:
+        return False
+        
+    # Check if user is a superuser
+    if user.is_superuser:
+        return True
+        
+    # Check if user has admin user_type
+    if hasattr(user, 'user_type') and user.user_type == 'admin':
+        return True
+        
+    # Check if user has an Administrator profile
+    try:
+        from nss_admin.models import Administrator
+        return Administrator.objects.filter(user=user).exists()
+    except ImportError:
+        return False
 
 # Get available supervisors for admin to assign
 @api_view(['GET'])
@@ -399,31 +420,70 @@ def is_admin(user):
 def get_available_supervisors(request):
     if not is_admin(request.user):
         return Response({'error': 'Access denied. Admin privileges required.'}, 
-                       status=status.HTTP_403_FORBIDDEN)
+                      status=status.HTTP_403_FORBIDDEN)
     
     try:
-        # Import the Supervisor model and serializer from the correct location
-        from supervisors.models import Supervisor
-        from supervisors.serializers import SupervisorSerializer
+        import sys
+        import importlib
+        
+        # Try to import Supervisor model
+        try:
+            from nss_supervisors.models import Supervisor
+            print("Successfully imported Supervisor model")
+        except ImportError as e:
+            print(f"Error importing Supervisor: {e}")
+            # Try to print the Python path for debugging
+            print("Python path:", sys.path)
+            # Try to find the module
+            import pkgutil
+            print("Installed packages:", [name for _, name, _ in pkgutil.iter_modules()])
+            raise
+            
+        # Try to import SupervisorSerializer
+        try:
+            from nss_supervisors.serializers import SupervisorSerializer
+            print("Successfully imported SupervisorSerializer")
+        except ImportError as e:
+            print(f"Error importing SupervisorSerializer: {e}")
+            # Try to print the module contents
+            try:
+                import nss_supervisors.serializers
+                print("Contents of nss_supervisors.serializers:", dir(nss_supervisors.serializers))
+            except Exception as e2:
+                print(f"Could not inspect nss_supervisors.serializers: {e2}")
+            raise
         
         # Get all active supervisors
+        print("Querying supervisors...")
         supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
+        print(f"Found {supervisors.count()} supervisors")
         
         if not supervisors.exists():
+            print("No active supervisors found")
             return Response({'error': 'No supervisors found'}, 
                           status=status.HTTP_404_NOT_FOUND)
             
+        print("Serializing supervisors...")
         serializer = SupervisorSerializer(supervisors, many=True)
+        print("Sending response...")
         return Response({
             'count': len(serializer.data),
             'results': serializer.data
         })
         
     except ImportError as e:
-        return Response({'error': f'Import error: {str(e)}'}, 
+        error_msg = f'Import error: {str(e)}. Check server logs for details.'
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return Response({'error': error_msg}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
-        return Response({'error': f'Error fetching supervisors: {str(e)}'}, 
+        error_msg = f'Error fetching supervisors: {str(e)}. Check server logs for details.'
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return Response({'error': error_msg}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Assign supervisor to NSS personnel
