@@ -402,14 +402,28 @@ def get_available_supervisors(request):
                        status=status.HTTP_403_FORBIDDEN)
     
     try:
-        from nss_supervisors.models import Supervisor
-        from nss_supervisors.serializers import SupervisorSerializer
+        # Import the Supervisor model and serializer from the correct location
+        from supervisors.models import Supervisor
+        from supervisors.serializers import SupervisorSerializer
         
-        supervisors = Supervisor.objects.all()
+        # Get all active supervisors
+        supervisors = Supervisor.objects.filter(user__is_active=True).select_related('user')
+        
+        if not supervisors.exists():
+            return Response({'error': 'No supervisors found'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+            
         serializer = SupervisorSerializer(supervisors, many=True)
-        return Response(serializer.data)
+        return Response({
+            'count': len(serializer.data),
+            'results': serializer.data
+        })
+        
+    except ImportError as e:
+        return Response({'error': f'Import error: {str(e)}'}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
-        return Response({'error': str(e)}, 
+        return Response({'error': f'Error fetching supervisors: {str(e)}'}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Assign supervisor to NSS personnel
