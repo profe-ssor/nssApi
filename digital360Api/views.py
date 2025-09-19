@@ -487,19 +487,48 @@ def get_nss_by_supervisor(request, supervisor_id):
 def get_unassigned_nss(request):
     if not is_admin(request.user):
         return Response({'error': 'Access denied. Admin privileges required.'}, 
-                       status=status.HTTP_403_FORBIDDEN)
+                      status=status.HTTP_403_FORBIDDEN)
     
     try:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         from nss_personnel.models import NSSPersonnel
         from nss_personnel.serializer import NSSPersonnelSerializer
         
-        # Get all NSS personnel without an assigned supervisor
-        unassigned_nss = NSSPersonnel.objects.filter(assigned_supervisor__isnull=True)
-        serializer = NSSPersonnelSerializer(unassigned_nss, many=True)
+        logger.info("Fetching unassigned NSS personnel...")
         
-        return Response(serializer.data)
+        # Get all NSS personnel without an assigned supervisor
+        unassigned_nss = NSSPersonnel.objects.filter(
+            assigned_supervisor__isnull=True
+        ).select_related('user', 'assigned_supervisor', 'region_of_posting')
+        
+        logger.info(f"Found {unassigned_nss.count()} unassigned NSS personnel")
+        
+        # Add debug logging for the first few records
+        for i, person in enumerate(unassigned_nss[:3], 1):
+            logger.debug(f"Unassigned NSS {i}: ID={person.id}, Name={person.full_name}, Supervisor={person.assigned_supervisor}")
+        
+        serializer = NSSPersonnelSerializer(unassigned_nss, many=True)
+        logger.info("Serialization completed successfully")
+        
+        return Response({
+            'count': len(serializer.data),
+            'results': serializer.data
+        })
+        
+    except ImportError as e:
+        logger.error(f"Import error in get_unassigned_nss: {str(e)}")
+        return Response(
+            {'error': 'Internal server error - module import failed'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.exception("Unexpected error in get_unassigned_nss")
+        return Response(
+            {'error': 'An unexpected error occurred while fetching unassigned NSS personnel'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 # assign supervisors to an admin
 
