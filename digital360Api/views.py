@@ -388,9 +388,10 @@ def user_counts(request):
 
 
 
-# Helper function to check if user is admin
+# Helper function to check if user is admin or superuser
 def is_admin(user):
-    return user.is_authenticated and user.is_superuser
+    from .models import Administrator
+    return user.is_authenticated and (user.is_superuser or Administrator.objects.filter(user=user).exists())
 
 # Get available supervisors for admin to assign
 @api_view(['GET'])
