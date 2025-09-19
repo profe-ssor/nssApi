@@ -402,13 +402,15 @@ def get_available_supervisors(request):
                        status=status.HTTP_403_FORBIDDEN)
     
     try:
-        admin = Administrator.objects.get(user=request.user)
-        supervisors = admin.assigned_supervisors.all()
+        from nss_supervisors.models import Supervisor
+        from nss_supervisors.serializers import SupervisorSerializer
+        
+        supervisors = Supervisor.objects.all()
         serializer = SupervisorSerializer(supervisors, many=True)
         return Response(serializer.data)
-    except Administrator.DoesNotExist:
-        return Response({'error': 'Administrator profile not found'}, 
-                       status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Assign supervisor to NSS personnel
 @api_view(['POST'])
